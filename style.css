@@ -1,0 +1,18 @@
+body {
+    background-color: #1a1a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+canvas {
+    /* ドットをくっきり表示させるための設定 */
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 512px;  /* 画面上での表示サイズ（元サイズの2倍） */
+    height: 488px;
+    background-color: #000;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+}
