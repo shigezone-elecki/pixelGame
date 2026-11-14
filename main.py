@@ -37,7 +37,7 @@ class App:
 
     pyxel.run(self.update, self.draw)
 
-def update(self):
+  def update(self):
     self.was_moving = self.moving
     self.moving = False
 
