@@ -37,24 +37,55 @@ class App:
 
     pyxel.run(self.update, self.draw)
 
-  def update(self):
+def update(self):
     self.was_moving = self.moving
     self.moving = False
 
-    # キー入力による移動と向き・速度の調整
-    if pyxel.btn(pyxel.KEY_UP) or pyxel.btn(pyxel.KEY_W):
+    # キーボード入力のフラグ
+    is_up = pyxel.btn(pyxel.KEY_UP) or pyxel.btn(pyxel.KEY_W)
+    is_down = pyxel.btn(pyxel.KEY_DOWN) or pyxel.btn(pyxel.KEY_S)
+    is_left = pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A)
+    is_right = pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D)
+
+    # スマホのタッチ（またはマウスの左クリック）操作の追加
+    if pyxel.btn(pyxel.MOUSE_BUTTON_LEFT):
+      mx, my = pyxel.mouse_x, pyxel.mouse_y
+      
+      # 画面を十字に分割して、タッチされた場所で方向を決定する例
+      # （画面サイズ 256x256 の場合、中心を基準にするなど）
+      # ここでは「キャラクターから見てどちらの方向か」または「画面の上下左右の端か」を判定します
+      
+      # 方法：キャラクターとタッチ位置の差分を見る場合
+      dx = mx - (self.x + self.width / 2)
+      dy = my - (self.y + self.height / 2)
+      
+      # タッチ位置がキャラクターから少し離れている場合のみ移動
+      if abs(dx) > 4 or abs(dy) > 4:
+        if abs(dx) > abs(dy):
+          if dx < 0:
+            is_left = True
+          else:
+            is_right = True
+        else:
+          if dy < 0:
+            is_up = True
+          else:
+            is_down = True
+
+    # 決定したフラグに基づいて実際に座標と向きを更新
+    if is_up:
       self.y -= 0.8
       self.direction = "up"
       self.moving = True
-    elif pyxel.btn(pyxel.KEY_DOWN) or pyxel.btn(pyxel.KEY_S):
+    elif is_down:
       self.y += 0.8
       self.direction = "down"
       self.moving = True
-    elif pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A):
+    elif is_left:
       self.x -= 1
       self.direction = "left"
       self.moving = True
-    elif pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D):
+    elif is_right:
       self.x += 1
       self.direction = "right"
       self.moving = True
