@@ -39,27 +39,11 @@ class App:
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード ＋ 公式バーチャルパッド（ゲームパッド1）の入力を両方受け付ける
-    is_up = (
-        pyxel.btn(pyxel.KEY_UP)
-        or pyxel.btn(pyxel.KEY_W)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_UP)
-    )
-    is_down = (
-        pyxel.btn(pyxel.KEY_DOWN)
-        or pyxel.btn(pyxel.KEY_S)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DOWN)
-    )
-    is_left = (
-        pyxel.btn(pyxel.KEY_LEFT)
-        or pyxel.btn(pyxel.KEY_A)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_LEFT)
-    )
-    is_right = (
-        pyxel.btn(pyxel.KEY_RIGHT)
-        or pyxel.btn(pyxel.KEY_D)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_RIGHT)
-    )
+    # バーチャルパッドやキーボードの入力を受け取る
+    is_up = pyxel.btn(pyxel.KEY_UP) or pyxel.btn(pyxel.KEY_W)
+    is_down = pyxel.btn(pyxel.KEY_DOWN) or pyxel.btn(pyxel.KEY_S)
+    is_left = pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A)
+    is_right = pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D)
 
     # 決定したフラグに基づいて実際に座標と向きを更新
     if is_up:
