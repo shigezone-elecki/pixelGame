@@ -35,16 +35,31 @@ class App:
 
     pyxel.run(self.update, self.draw)
 
-  def update(self):
+def update(self):
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード入力のフラグ
-    is_up = pyxel.btn(pyxel.KEY_UP) or pyxel.btn(pyxel.KEY_W)
-    is_down = pyxel.btn(pyxel.KEY_DOWN) or pyxel.btn(pyxel.KEY_S)
-    is_left = pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A)
-    is_right = pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D)
-
+    # キーボード ＋ Pyxel公式バーチャルパッド（ゲームパッド1）の入力を両方受け付ける
+    is_up = (
+        pyxel.btn(pyxel.KEY_UP)
+        or pyxel.btn(pyxel.KEY_W)
+        or pyxel.btn(pyxel.GAMEPAD_1_UP)
+    )
+    is_down = (
+        pyxel.btn(pyxel.KEY_DOWN)
+        or pyxel.btn(pyxel.KEY_S)
+        or pyxel.btn(pyxel.GAMEPAD_1_DOWN)
+    )
+    is_left = (
+        pyxel.btn(pyxel.KEY_LEFT)
+        or pyxel.btn(pyxel.KEY_A)
+        or pyxel.btn(pyxel.GAMEPAD_1_LEFT)
+    )
+    is_right = (
+        pyxel.btn(pyxel.KEY_RIGHT)
+        or pyxel.btn(pyxel.KEY_D)
+        or pyxel.btn(pyxel.GAMEPAD_1_RIGHT)
+    )
     # スマホのタッチ（またはマウスの左クリック）操作の判定
     if pyxel.btn(pyxel.MOUSE_BUTTON_LEFT):
       mx, my = pyxel.mouse_x, pyxel.mouse_y
@@ -137,7 +152,7 @@ class App:
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-  def draw(self):
+def draw(self):
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
