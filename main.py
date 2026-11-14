@@ -35,7 +35,7 @@ class App:
 
     pyxel.run(self.update, self.draw)
 
-def update(self):
+  def update(self):
     self.was_moving = self.moving
     self.moving = False
 
@@ -60,38 +60,6 @@ def update(self):
         or pyxel.btn(pyxel.KEY_D)
         or pyxel.btn(pyxel.GAMEPAD_1_RIGHT)
     )
-    # スマホのタッチ（またはマウスの左クリック）操作の判定
-    if pyxel.btn(pyxel.MOUSE_BUTTON_LEFT):
-      mx, my = pyxel.mouse_x, pyxel.mouse_y
-
-      # 画面下部に描画する仮想ボタンの当たり判定エリア
-      # [UPボタン]: x=40〜80, y=190〜220
-      if 40 <= mx <= 80 and 190 <= my <= 220:
-        is_up = True
-      # [DOWNボタン]: x=40〜80, y=220〜250
-      elif 40 <= mx <= 80 and 220 <= my <= 250:
-        is_down = True
-      # [LEFTボタン]: x=10〜40, y=220〜250
-      elif 10 <= mx <= 40 and 220 <= my <= 250:
-        is_left = True
-      # [RIGHTボタン]: x=80〜110, y=220〜250
-      elif 80 <= mx <= 110 and 220 <= my <= 250:
-        is_right = True
-      # あるいは、画面のどこかを直接タッチしてその方向へ向かうフォールバック
-      else:
-        dx = mx - (self.x + self.width / 2)
-        dy = my - (self.y + self.height / 2)
-        if abs(dx) > 8 or abs(dy) > 8:
-          if abs(dx) > abs(dy):
-            if dx < 0:
-              is_left = True
-            else:
-              is_right = True
-          else:
-            if dy < 0:
-              is_up = True
-            else:
-              is_down = True
 
     # 決定したフラグに基づいて実際に座標と向きを更新
     if is_up:
@@ -111,7 +79,7 @@ def update(self):
       self.direction = "right"
       self.moving = True
 
-    # 画面外に出ないように制限（オプション）
+    # 画面外に出ないように制限
     self.x = max(0, min(self.x, 256 - self.width))
     self.y = max(0, min(self.y, 256 - self.height))
 
@@ -152,7 +120,7 @@ def update(self):
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-def draw(self):
+  def draw(self):
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
@@ -185,21 +153,6 @@ def draw(self):
         self.height,
         0,
     )
-
-    # 【スマホ用タッチパッド（仮想十字キー）の描画】
-    # 画面左下に十字キー風のボタンを表示します（色番号 5: 灰色、6: 白など）
-    # 上ボタン
-    pyxel.rect(40, 190, 40, 30, 5)
-    pyxel.text(55, 201, "▲", 7)
-    # 下ボタン
-    pyxel.rect(40, 222, 40, 30, 5)
-    pyxel.text(55, 233, "▼", 7)
-    # 左ボタン
-    pyxel.rect(8, 222, 30, 30, 5)
-    pyxel.text(20, 233, "◀", 7)
-    # 右ボタン
-    pyxel.rect(82, 222, 30, 30, 5)
-    pyxel.text(94, 233, "▶", 7)
 
 
 App()
