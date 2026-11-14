@@ -4,8 +4,8 @@ import pyxel
 class App:
 
   def __init__(self):
-    # 画面サイズ 256x256 で初期化
-    pyxel.init(160, 120, title="Pixel Game - Pyxel", fps=60, display_scale=3)
+    # 画面サイズを 256x256 の正方形に統一
+    pyxel.init(256, 256, title="Pixel Game - Pyxel", fps=60)
 
     # プレイヤーの初期状態
     self.x = 120
@@ -79,7 +79,7 @@ class App:
       self.direction = "right"
       self.moving = True
 
-    # 画面外に出ないように制限
+    # 画面外に出ないように制限（256x256基準）
     self.x = max(0, min(self.x, 256 - self.width))
     self.y = max(0, min(self.y, 256 - self.height))
 
