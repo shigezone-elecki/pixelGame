@@ -5,7 +5,7 @@ class App:
 
   def __init__(self):
     # 画面サイズ 256x256 で初期化
-    pyxel.init(256, 256, title="Pixel Game - Pyxel", fps=60, display_scale=4)
+    pyxel.init(160, 120, title="Pixel Game - Pyxel", fps=60, display_scale=3)
 
     # プレイヤーの初期状態
     self.x = 120
