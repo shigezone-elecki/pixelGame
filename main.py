@@ -24,8 +24,6 @@ class App:
     self.idle_step_count = 0
 
     # 【画像の読み込み】
-    # すべてイメージバンク 0 の中に、位置（x, y）をずらして並べてロードします！
-    # これによりイメージバンクの範囲外エラーを防げます。
     try:
       pyxel.images[0].load(0, 0, "player_sheet_F.png")  # 下向き歩行: (0, 0)
       pyxel.images[0].load(0, 64, "player_sheet_B.png")  # 上向き歩行: (0, 64)
@@ -47,30 +45,38 @@ class App:
     is_left = pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A)
     is_right = pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D)
 
-    # スマホのタッチ（またはマウスの左クリック）操作の追加
+    # スマホのタッチ（またはマウスの左クリック）操作の判定
     if pyxel.btn(pyxel.MOUSE_BUTTON_LEFT):
       mx, my = pyxel.mouse_x, pyxel.mouse_y
-      
-      # 画面を十字に分割して、タッチされた場所で方向を決定する例
-      # （画面サイズ 256x256 の場合、中心を基準にするなど）
-      # ここでは「キャラクターから見てどちらの方向か」または「画面の上下左右の端か」を判定します
-      
-      # 方法：キャラクターとタッチ位置の差分を見る場合
-      dx = mx - (self.x + self.width / 2)
-      dy = my - (self.y + self.height / 2)
-      
-      # タッチ位置がキャラクターから少し離れている場合のみ移動
-      if abs(dx) > 4 or abs(dy) > 4:
-        if abs(dx) > abs(dy):
-          if dx < 0:
-            is_left = True
+
+      # 画面下部に描画する仮想ボタンの当たり判定エリア
+      # [UPボタン]: x=40〜80, y=190〜220
+      if 40 <= mx <= 80 and 190 <= my <= 220:
+        is_up = True
+      # [DOWNボタン]: x=40〜80, y=220〜250
+      elif 40 <= mx <= 80 and 220 <= my <= 250:
+        is_down = True
+      # [LEFTボタン]: x=10〜40, y=220〜250
+      elif 10 <= mx <= 40 and 220 <= my <= 250:
+        is_left = True
+      # [RIGHTボタン]: x=80〜110, y=220〜250
+      elif 80 <= mx <= 110 and 220 <= my <= 250:
+        is_right = True
+      # あるいは、画面のどこかを直接タッチしてその方向へ向かうフォールバック
+      else:
+        dx = mx - (self.x + self.width / 2)
+        dy = my - (self.y + self.height / 2)
+        if abs(dx) > 8 or abs(dy) > 8:
+          if abs(dx) > abs(dy):
+            if dx < 0:
+              is_left = True
+            else:
+              is_right = True
           else:
-            is_right = True
-        else:
-          if dy < 0:
-            is_up = True
-          else:
-            is_down = True
+            if dy < 0:
+              is_up = True
+            else:
+              is_down = True
 
     # 決定したフラグに基づいて実際に座標と向きを更新
     if is_up:
@@ -90,6 +96,10 @@ class App:
       self.direction = "right"
       self.moving = True
 
+    # 画面外に出ないように制限（オプション）
+    self.x = max(0, min(self.x, 256 - self.width))
+    self.y = max(0, min(self.y, 256 - self.height))
+
     # 停止状態に切り替わった瞬間のリセット
     if self.was_moving and not self.moving:
       self.frame_x = 0
@@ -99,7 +109,6 @@ class App:
 
     # アニメーションの処理
     if self.moving:
-      # 【移動中】歩行アニメーションのループ
       self.anim_timer += 1
       if self.anim_timer >= self.anim_speed:
         self.anim_timer = 0
@@ -107,7 +116,6 @@ class App:
         if self.frame_x == 0:
           self.frame_y = 0 if self.frame_y == 1 else 1
     else:
-      # 【停止中】全6コマを1回だけ再生して最後のコマで止まる
       if self.idle_step_count < 6:
         self.anim_timer += 1
         if self.anim_timer >= self.anim_speed:
@@ -133,7 +141,7 @@ class App:
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
-    # 状態に応じて、イメージバンク0内の「切り出し開始位置（u_base, v_base）」を決める
+    # プレイヤーの描画
     u_base = 0
     v_base = 0
 
@@ -147,14 +155,11 @@ class App:
       elif self.direction == "right":
         u_base, v_base = 0, 192
     else:
-      # 停止時は共通の Fstp シートの配置場所（96, 0）を基準にする
       u_base, v_base = 96, 0
 
-    # 基準位置 ＋ アニメーションのコマ位置（frame_x, frame_y）を足して切り出す
     u = u_base + (self.frame_x * self.width)
     v = v_base + (self.frame_y * self.height)
 
-    # Pyxelの blt で描画（img=0 を使用。colkey=0 で黒背景を透明化）
     pyxel.blt(
         int(self.x),
         int(self.y),
@@ -165,6 +170,21 @@ class App:
         self.height,
         0,
     )
+
+    # 【スマホ用タッチパッド（仮想十字キー）の描画】
+    # 画面左下に十字キー風のボタンを表示します（色番号 5: 灰色、6: 白など）
+    # 上ボタン
+    pyxel.rect(40, 190, 40, 30, 5)
+    pyxel.text(55, 201, "▲", 7)
+    # 下ボタン
+    pyxel.rect(40, 222, 40, 30, 5)
+    pyxel.text(55, 233, "▼", 7)
+    # 左ボタン
+    pyxel.rect(8, 222, 30, 30, 5)
+    pyxel.text(20, 233, "◀", 7)
+    # 右ボタン
+    pyxel.rect(82, 222, 30, 30, 5)
+    pyxel.text(94, 233, "▶", 7)
 
 
 App()
