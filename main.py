@@ -26,14 +26,14 @@ class App:
 
     # --- ワープおよび独立アニメーション用の状態管理 ---
     self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN", "TEST_DRON"
-    
+
     # 独立したタイムライン用変数
-    self.dron_frame = 0.0     # ドロン用フレーム (0 〜 12)
-    self.dron_timer = 0       # ドロンのコマ送りタイマー
-    
-    self.smoke_frame = 0.0    # ケムリ用フレーム (0 〜 12)
-    self.smoke_timer = 0      # ケムリのコマ送りタイマー
-    self.smoke_started = False # ケムリを遅延スタートさせるためのフラグ
+    self.dron_frame = 0.0  # ドロン用フレーム (0 〜 12)
+    self.dron_timer = 0  # ドロンのコマ送りタイマー
+
+    self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
+    self.smoke_timer = 0  # ケムリのコマ送りタイマー
+    self.smoke_started = False  # ケムリを遅延スタートさせるためのフラグ
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
@@ -47,7 +47,7 @@ class App:
       pyxel.images[0].load(0, 192, "karakusa_32_R.png")
       pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
 
-      # Bank 1: エフェクト用（ドロン ＆ ケムリ）
+      # Bank 1: エフェクト用（ドロン ＆ ケムリ）[cite: 7]
       pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
       pyxel.images[1].load(0, 32, "karakusa_32_Smoke.png")
     except Exception as e:
@@ -60,41 +60,38 @@ class App:
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-    # --- 【テスト用】ドロン単体再生モード（煙なし、最後の3コマタメ付き） ---
+    # --- 【テスト用】ドロン単体再生モード（煙なし、フレーム番号表示付き） ---
     if self.state == "TEST_DRON":
       self.dron_timer += 1
       # 最後の3コマ（10, 11, 12コマ目）だけタメを長くする
-      dron_speed = 12 if int(self.dron_frame) >= 10 else 3
+      dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
         self.dron_frame += 1
 
+        # 12コマ目を超えたら（13になったら）テスト終了してリセット
         if self.dron_frame > self.max_dron_frame:
           self.state = "NORMAL"
       return
 
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
-      # ① ドロンアニメーションのタイムライン（独立）
       self.dron_timer += 1
-      dron_speed = 12 if int(self.dron_frame) >= 10 else 3
+      dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
         self.dron_frame += 1
-        # ドロンが数コマ進んだら煙のタイムラインを起動する
         if self.dron_frame >= 4:
           self.smoke_started = True
 
-      # ② ケムリアニメーションのタイムライン（完全に独立してスムーズに再生）
       if self.smoke_started:
         self.smoke_timer += 1
-        if self.smoke_timer >= 2:  # 煙専用の等速スピード
+        if self.smoke_timer >= 3:
           self.smoke_timer = 0
           self.smoke_frame += 1
 
-      # 両方のアニメーションが最後まで完了したら、ワープ先へ飛んで現れる演出へ
       if (
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
@@ -102,7 +99,6 @@ class App:
         self.x = random.randint(0, 256 - self.width)
         self.y = random.randint(0, 256 - self.height)
 
-        # 現れる演出（WARP_IN）に移行（ドロン逆再生 ＆ 煙最初から）
         self.state = "WARP_IN"
         self.dron_frame = float(self.max_dron_frame)
         self.dron_timer = 0
@@ -113,21 +109,18 @@ class App:
 
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
-      # ① 現れるときのドロン逆再生タイムライン（最後の3コマで同じようにタメを作る）
       self.dron_timer += 1
-      dron_speed = 12 if int(self.dron_frame) >= 10 else 3
+      dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
         self.dron_frame -= 1
 
-      # ② 現れるときの煙タイムライン（独立してスムーズに再生）
       self.smoke_timer += 1
-      if self.smoke_timer >= 2:
+      if self.smoke_timer >= 3:
         self.smoke_timer = 0
         self.smoke_frame += 1
 
-      # ドロンが最初（0）まで戻り、かつ煙も再生しきったら通常状態へ
       if self.dron_frame < 0 and self.smoke_frame > self.max_smoke_frame:
         self.state = "NORMAL"
       return
@@ -160,7 +153,7 @@ class App:
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける
+    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける[cite: 7]
     is_up = (
         pyxel.btn(pyxel.KEY_UP)
         or pyxel.btn(pyxel.KEY_W)
@@ -234,7 +227,7 @@ class App:
         self.frame_y = 1
 
   def draw(self):
-    # 画面クリア（色番号 1: 暗い青紫）
+    # 画面クリア（色番号 1: 暗い青紫）[cite: 7]
     pyxel.cls(1)
 
     # --- 状態に応じた描画 ---
@@ -245,14 +238,20 @@ class App:
         u_dron = dron_idx * self.width
         pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
 
+        # 画面上に現在のフレーム番号（0〜12）をテキスト表示して確認できるようにする
+        pyxel.text(
+            int(self.x),
+            int(self.y) - 10,
+            f"FRAME: {dron_idx}",
+            7,  # 7: 白文字
+        )
+
     elif self.state == "WARP_OUT":
-      # 1. 独立したドロンアニメーション
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u_dron = dron_idx * self.width
         pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
 
-      # 2. 独立した煙アニメーション（別タイムラインでオーバーラップ）
       if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
         u_smoke = smoke_idx * self.width
@@ -261,7 +260,6 @@ class App:
         )
 
     elif self.state == "WARP_IN":
-      # 1. 独立した煙アニメーション
       if 0 <= self.smoke_frame <= self.max_smoke_frame:
         smoke_idx = int(self.smoke_frame)
         u_smoke = smoke_idx * self.width
@@ -269,7 +267,6 @@ class App:
             int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
         )
 
-      # 2. 独立したドロンアニメーション（逆再生）
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u_dron = dron_idx * self.width
