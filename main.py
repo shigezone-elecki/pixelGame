@@ -29,7 +29,7 @@ class App:
     self.effect_timer = 0
     self.dron_frame = 0  # ドロンアニメーションのコマ番 (0 〜 14)
     self.smoke_frame = 0  # ケムリアニメーションのコマ番
-    self.max_dron_frame = 14  # コマ数（0始まりで全15コマ想定）
+    self.max_dron_frame = 14  # 全15コマ（0始まり）
 
     # 【画像の読み込み】
     try:
@@ -59,18 +59,19 @@ class App:
       if self.effect_timer >= 2:  # 速度調整
         self.effect_timer = 0
         self.dron_frame += 1
-        self.smoke_frame += 1
 
-        # ドロンの最後までいったら、ワープ先を決めて現れる演出へ
+        # 後半の4コマ目（11〜14コマ目）に入ったら煙をスタートさせる
+        if self.dron_frame >= 11:
+          self.smoke_frame += 1
+
+        # 最後まで行ったら新しい場所へワープし、現れる演出へ
         if self.dron_frame > self.max_dron_frame:
-          # ランダムな新しい座標へワープ
           self.x = random.randint(0, 256 - self.width)
           self.y = random.randint(0, 256 - self.height)
 
-          # 現れる演出（WARP_IN）に移行。ドロンは最後のコマからスタート！
           self.state = "WARP_IN"
-          self.dron_frame = self.max_dron_frame
-          self.smoke_frame = 0
+          self.dron_frame = self.max_dron_frame  # 最後のポーズから逆再生スタート
+          self.smoke_frame = 0  # 現れるときは煙を最初から
           self.effect_timer = 0
       return
 
@@ -79,18 +80,15 @@ class App:
       self.effect_timer += 1
       if self.effect_timer >= 2:
         self.effect_timer = 0
-        # キャラクターは最後のコマから「逆再生」して戻っていく
-        self.dron_frame -= 1
-        # ケムリは普通に進行させる
-        self.smoke_frame += 1
+        self.dron_frame -= 1  # 逆再生
+        self.smoke_frame += 1  # 煙進行
 
-        # ドロンが最初のコマ（0）に戻りきったら通常状態へ
+        # ドロンが最初に戻りきったら通常状態へ
         if self.dron_frame < 0:
           self.state = "NORMAL"
       return
 
     # --- 3. 通常時の処理（移動・ワープトリガー） ---
-    # スペースキー または ゲームパッドのAボタンでドロン発動
     is_warp = pyxel.btnp(pyxel.KEY_SPACE) or pyxel.btnp(
         pyxel.GAMEPAD1_BUTTON_A
     )
@@ -104,7 +102,7 @@ class App:
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける
+    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける[cite: 7]
     is_up = (
         pyxel.btn(pyxel.KEY_UP)
         or pyxel.btn(pyxel.KEY_W)
@@ -190,18 +188,22 @@ class App:
       # 1. キャラクタ（ドロンアニメーション正再生）
       u_dron = self.dron_frame * self.width
       pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
-      # 2. 煙アニメーションをオーバーラップ
-      u_smoke = self.smoke_frame * self.width
-      pyxel.blt(
-          int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
-      )
+
+      # 2. 最後の4コマ（11〜14コマ目）のときだけ煙をオーバーラップ
+      if self.dron_frame >= 11:
+        u_smoke = self.smoke_frame * self.width
+        pyxel.blt(
+            int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
+        )
 
     elif self.state == "WARP_IN":
-      # 1. 煙アニメーションをオーバーラップ
-      u_smoke = self.smoke_frame * self.width
-      pyxel.blt(
-          int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
-      )
+      # 1. 現れた直後の前半（逆再生の14〜11コマ目）のときだけ煙をオーバーラップ
+      if self.dron_frame >= 11:
+        u_smoke = self.smoke_frame * self.width
+        pyxel.blt(
+            int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
+        )
+
       # 2. キャラクタ（ドロンアニメーション逆再生）
       u_dron = self.dron_frame * self.width
       pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
