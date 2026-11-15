@@ -25,11 +25,11 @@ class App:
 
     # 【画像の読み込み】
     try:
-      pyxel.images[0].load(0, 0, "player_sheet_F.png")  # 下向き歩行: (0, 0)
-      pyxel.images[0].load(0, 64, "player_sheet_B.png")  # 上向き歩行: (0, 64)
-      pyxel.images[0].load(0, 128, "player_sheet_L.png")  # 左向き歩行: (0, 128)
-      pyxel.images[0].load(0, 192, "player_sheet_R.png")  # 右向き歩行: (0, 192)
-      pyxel.images[0].load(96, 0, "player_sheet_Fstp.png")  # 停止用: (96, 0)
+      pyxel.images[0].load(0, 0, "karakusa_32_F.png")  # 下向き歩行: (0, 0)
+      pyxel.images[0].load(0, 64, "karakusa_32_B.png")  # 上向き歩行: (0, 64)
+      pyxel.images[0].load(0, 128, "karakusa_32_L.png")  # 左向き歩行: (0, 128)
+      pyxel.images[0].load(0, 192, "karakusa_32_R.png")  # 右向き歩行: (0, 192)
+      pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")  # 停止用: (96, 0)
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
