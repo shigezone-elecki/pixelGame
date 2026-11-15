@@ -85,6 +85,7 @@ class App:
       self.dron_timer += 1
       dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
+
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
         if self.dron_frame <= self.max_dron_frame:
@@ -179,19 +180,19 @@ class App:
     )
 
     if is_up:
-      self.y -= 1
+      self.y -= 2
       self.direction = "up"
       self.moving = True
     elif is_down:
-      self.y += 1
+      self.y += 2
       self.direction = "down"
       self.moving = True
     elif is_left:
-      self.x -= 1
+      self.x -= 2
       self.direction = "left"
       self.moving = True
     elif is_right:
-      self.x += 1
+      self.x += 2
       self.direction = "right"
       self.moving = True
 
