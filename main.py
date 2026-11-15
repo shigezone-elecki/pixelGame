@@ -103,9 +103,8 @@ class App:
         if self.dron_frame <= self.max_dron_frame:
           self.dron_frame += 1
 
-      # ② ケムリの進行（タメなしで等速スムーズに全13コマ再生。ドロンと同時に終わるよう調整）
+      # ② ケムリの進行
       self.smoke_timer += 1
-      # 煙の総フレーム数(13)が、ドロンの総ウェイト時間と大体同期するように速度を設定（例: 2フレームに1回進む）
       if self.smoke_timer >= 5:
         self.smoke_timer = 0
         if self.smoke_frame <= self.max_smoke_frame:
@@ -119,7 +118,7 @@ class App:
         self.x = random.randint(0, 256 - self.width)
         self.y = random.randint(0, 256 - self.height)
 
-        # 現れる演出（WARP_IN）に移行（ドロン逆再生 ＆ 煙最初から同時スタート）
+        # 現れる演出（WARP_IN）に移行
         self.state = "WARP_IN"
         self.dron_frame = float(self.max_dron_frame)
         self.dron_timer = 0
@@ -129,21 +128,22 @@ class App:
 
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
-      # ① 現れるときはドロンのタメなし、煙と同時にスムーズに13コマ分を逆再生
+      # ① ドロン逆再生（0コマ目まで来たらそこで止めて維持する）
       self.dron_timer += 1
       if self.dron_timer >= 4:
         self.dron_timer = 0
-        self.dron_frame -= 1
+        if self.dron_frame > 0:
+          self.dron_frame -= 1
 
-      # ② 煙も同時にスムーズに進行
+      # ② 煙の進行
       self.smoke_timer += 1
       if self.smoke_timer >= 5:
         self.smoke_timer = 0
         if self.smoke_frame <= self.max_smoke_frame:
           self.smoke_frame += 1
 
-      # ドロンが最初（0）まで戻り、かつ煙も再生しきったら通常状態へ
-      if self.dron_frame < 0 and self.smoke_frame > self.max_smoke_frame:
+      # ドロンが1コマ目(0)で維持されつつ、煙が最後まで再生しきったら通常状態へ
+      if self.smoke_frame > self.max_smoke_frame:
         self.state = "NORMAL"
       return
 
@@ -188,7 +188,9 @@ class App:
     is_left = (
         pyxel.btn(pyxel.KEY_LEFT)
         or pyxel.btn(pyxel.KEY_A)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
+        or pyxel.btn(pyxel.GAMEPAD1_GAMEPAD1_BUTTON_DPAD_LEFT
+        if hasattr(pyxel, "GAMEPAD1_GAMEPAD1_BUTTON_DPAD_LEFT")
+        else pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
     )
     is_right = (
         pyxel.btn(pyxel.KEY_RIGHT)
