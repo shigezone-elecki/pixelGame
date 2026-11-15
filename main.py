@@ -30,6 +30,7 @@ class App:
     self.dron_frame = 0  # ドロンアニメーションのコマ番 (0 〜 14)
     self.smoke_frame = 0  # ケムリアニメーションのコマ番
     self.max_dron_frame = 14  # 全15コマ（0始まり）
+    self.max_smoke_frame = 15  # 煙の総コマ数（0始まりで16コマ想定）
 
     # 【画像の読み込み】
     try:
@@ -56,21 +57,25 @@ class App:
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
       self.effect_timer += 1
-      if self.effect_timer >= 2:  # 速度調整
+
+      # 最後の3コマ（12, 13, 14コマ目）は通常の3倍の時間をかけてじっくり見せる
+      hold_time = 6 if self.dron_frame >= 12 else 2
+
+      if self.effect_timer >= hold_time:
         self.effect_timer = 0
         self.dron_frame += 1
 
-        # 後半の4コマ目（11〜14コマ目）に入ったら煙をスタートさせる
-        if self.dron_frame >= 11:
+        # 後半に入ったら煙も進行させる
+        if self.dron_frame >= 11 and self.smoke_frame <= self.max_smoke_frame:
           self.smoke_frame += 1
 
-        # 最後まで行ったら新しい場所へワープし、現れる演出へ
+        # ドロンが最後まで行ったら、新しい場所へワープし、現れる演出へ
         if self.dron_frame > self.max_dron_frame:
           self.x = random.randint(0, 256 - self.width)
           self.y = random.randint(0, 256 - self.height)
 
           self.state = "WARP_IN"
-          self.dron_frame = self.max_dron_frame  # 最後のポーズから逆再生スタート
+          self.dron_frame = self.max_dron_frame  # 最後のポーズ（逆再生の起点）
           self.smoke_frame = 0  # 現れるときは煙を最初から
           self.effect_timer = 0
       return
@@ -78,13 +83,20 @@ class App:
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
       self.effect_timer += 1
-      if self.effect_timer >= 2:
+
+      # 逆再生時も、最初の3コマ（ドロンフレームが12以上のとき）は溜めを長くする
+      hold_time = 6 if self.dron_frame >= 12 else 2
+
+      if self.effect_timer >= hold_time:
         self.effect_timer = 0
         self.dron_frame -= 1  # 逆再生
-        self.smoke_frame += 1  # 煙進行
+        
+        # 煙は最後までしっかり再生しきる
+        if self.smoke_frame <= self.max_smoke_frame:
+          self.smoke_frame += 1
 
-        # ドロンが最初に戻りきったら通常状態へ
-        if self.dron_frame < 0:
+        # ドロンが最初に戻りきり、かつ煙も最後まで再生しきったら通常状態へ
+        if self.dron_frame < 0 and self.smoke_frame > self.max_smoke_frame:
           self.state = "NORMAL"
       return
 
@@ -102,7 +114,7 @@ class App:
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける[cite: 7]
+    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける
     is_up = (
         pyxel.btn(pyxel.KEY_UP)
         or pyxel.btn(pyxel.KEY_W)
@@ -186,27 +198,33 @@ class App:
     # --- 状態に応じた描画 ---
     if self.state == "WARP_OUT":
       # 1. キャラクタ（ドロンアニメーション正再生）
-      u_dron = self.dron_frame * self.width
+      dron_idx = min(self.dron_frame, self.max_dron_frame)
+      u_dron = dron_idx * self.width
       pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
 
-      # 2. 最後の4コマ（11〜14コマ目）のときだけ煙をオーバーラップ
+      # 2. 煙アニメーション（最後まで範囲内に収める）
       if self.dron_frame >= 11:
-        u_smoke = self.smoke_frame * self.width
+        smoke_idx = min(self.smoke_frame, self.max_smoke_frame)
+        u_smoke = smoke_idx * self.width
         pyxel.blt(
             int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
         )
 
     elif self.state == "WARP_IN":
-      # 1. 現れた直後の前半（逆再生の14〜11コマ目）のときだけ煙をオーバーラップ
-      if self.dron_frame >= 11:
-        u_smoke = self.smoke_frame * self.width
-        pyxel.blt(
-            int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
-        )
+      # 1. 煙アニメーション（最後までしっかり再生）
+      smoke_idx = min(self.smoke_frame, self.max_smoke_frame)
+      u_smoke = smoke_idx * self.width
+      pyxel.blt(
+          int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
+      )
 
       # 2. キャラクタ（ドロンアニメーション逆再生）
-      u_dron = self.dron_frame * self.width
-      pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
+      if self.dron_frame >= 0:
+        dron_idx = min(self.dron_frame, self.max_dron_frame)
+        u_dron = dron_idx * self.width
+        pyxel.blt(
+            int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0
+        )
 
     else:
       # 通常時のプレイヤー描画
