@@ -33,7 +33,6 @@ class App:
 
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
     self.smoke_timer = 0  # ケムリのコマ送りタイマー
-    self.smoke_started = False  # ケムリを遅延スタートさせるためのフラグ
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
@@ -47,9 +46,9 @@ class App:
       pyxel.images[0].load(0, 192, "karakusa_32_R.png")
       pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
 
-      # Bank 1: エフェクト用（縦2段の新しいスプライトシートを読み込み）
-      pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
-      pyxel.images[1].load(0, 64, "karakusa_32_Smoke.png")
+      # Bank 1: エフェクト用（縦2段のスプライトシート）
+      pyxel.images[1].load(0, 0, "karakusa_32_DronF_2.png")
+      pyxel.images[1].load(0, 64, "karakusa_32_Smoke_2.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
@@ -57,7 +56,6 @@ class App:
 
   # --- 縦2段（1行8個）のシートから正しい (u, v) を計算するヘルパー関数 ---
   def get_effect_uv(self, frame_idx):
-    # 0〜7番目のコマは1行目 (v=0)、8番目以降は2行目 (v=32)
     if frame_idx < 8:
       u = (frame_idx % 8) * self.width
       v = 0
@@ -67,7 +65,6 @@ class App:
     return u, v
 
   def get_smoke_uv(self, frame_idx):
-    # 煙も同様に、上段 (v=64) と下段 (v=96) に配置されていると仮定
     if frame_idx < 8:
       u = (frame_idx % 8) * self.width
       v = 64
@@ -97,21 +94,24 @@ class App:
 
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
+      # ① ドロン！の進行（最後の3コマでタメる）
       self.dron_timer += 1
       dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
-        self.dron_frame += 1
-        if self.dron_frame >= 4:
-          self.smoke_started = True
+        if self.dron_frame <= self.max_dron_frame:
+          self.dron_frame += 1
 
-      if self.smoke_started:
-        self.smoke_timer += 1
-        if self.smoke_timer >= 3:
-          self.smoke_timer = 0
+      # ② ケムリの進行（タメなしで等速スムーズに全13コマ再生。ドロンと同時に終わるよう調整）
+      self.smoke_timer += 1
+      # 煙の総フレーム数(13)が、ドロンの総ウェイト時間と大体同期するように速度を設定（例: 2フレームに1回進む）
+      if self.smoke_timer >= 5:
+        self.smoke_timer = 0
+        if self.smoke_frame <= self.max_smoke_frame:
           self.smoke_frame += 1
 
+      # 両方のアニメーションが最後まで完了したら、ワープ先へ飛んで現れる演出へ
       if (
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
@@ -119,28 +119,30 @@ class App:
         self.x = random.randint(0, 256 - self.width)
         self.y = random.randint(0, 256 - self.height)
 
+        # 現れる演出（WARP_IN）に移行（ドロン逆再生 ＆ 煙最初から同時スタート）
         self.state = "WARP_IN"
         self.dron_frame = float(self.max_dron_frame)
         self.dron_timer = 0
         self.smoke_frame = 0.0
         self.smoke_timer = 0
-        self.smoke_started = True
       return
 
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
+      # ① 現れるときはドロンのタメなし、煙と同時にスムーズに13コマ分を逆再生
       self.dron_timer += 1
-      dron_speed = 15 if int(self.dron_frame) >= 10 else 4
-
-      if self.dron_timer >= dron_speed:
+      if self.dron_timer >= 4:
         self.dron_timer = 0
         self.dron_frame -= 1
 
+      # ② 煙も同時にスムーズに進行
       self.smoke_timer += 1
-      if self.smoke_timer >= 3:
+      if self.smoke_timer >= 5:
         self.smoke_timer = 0
-        self.smoke_frame += 1
+        if self.smoke_frame <= self.max_smoke_frame:
+          self.smoke_frame += 1
 
+      # ドロンが最初（0）まで戻り、かつ煙も再生しきったら通常状態へ
       if self.dron_frame < 0 and self.smoke_frame > self.max_smoke_frame:
         self.state = "NORMAL"
       return
@@ -155,7 +157,6 @@ class App:
       self.dron_timer = 0
       self.smoke_frame = 0.0
       self.smoke_timer = 0
-      self.smoke_started = False
       return
 
     # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタン
@@ -256,30 +257,32 @@ class App:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
-
-        # 現在のフレーム番号を表示
         pyxel.text(int(self.x), int(self.y) - 10, f"FRAME: {dron_idx}", 7)
 
     elif self.state == "WARP_OUT":
+      # 【重ね順：ドロン（下）を先に描画】
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
-      if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
-        smoke_idx = int(self.smoke_frame)
-        u, v = self.get_smoke_uv(smoke_idx)
-        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
-
-    elif self.state == "WARP_IN":
+      # 【重ね順：ケムリ（上）を後に描画して被せる】
       if 0 <= self.smoke_frame <= self.max_smoke_frame:
         smoke_idx = int(self.smoke_frame)
         u, v = self.get_smoke_uv(smoke_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
+    elif self.state == "WARP_IN":
+      # 【重ね順：ドロン（下）を先に描画】
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
+
+      # 【重ね順：ケムリ（上）を後に描画して被せる】
+      if 0 <= self.smoke_frame <= self.max_smoke_frame:
+        smoke_idx = int(self.smoke_frame)
+        u, v = self.get_smoke_uv(smoke_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
     else:
