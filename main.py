@@ -179,11 +179,11 @@ class App:
     )
 
     if is_up:
-      self.y -= 0.8
+      self.y -= 1
       self.direction = "up"
       self.moving = True
     elif is_down:
-      self.y += 0.8
+      self.y += 1
       self.direction = "down"
       self.moving = True
     elif is_left:
