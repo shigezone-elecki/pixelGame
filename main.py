@@ -47,20 +47,41 @@ class App:
       pyxel.images[0].load(0, 192, "karakusa_32_R.png")
       pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
 
-      # Bank 1: エフェクト用（ドロン ＆ ケムリ）[cite: 7]
-      pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
-      pyxel.images[1].load(0, 32, "karakusa_32_Smoke.png")
+      # Bank 1: エフェクト用（縦2段の新しいスプライトシートを読み込み）
+      pyxel.images[1].load(0, 0, "karakusa_32_DronF_2.png")
+      pyxel.images[1].load(0, 64, "karakusa_32_Smoke_2.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
     pyxel.run(self.update, self.draw)
+
+  # --- 縦2段（1行8個）のシートから正しい (u, v) を計算するヘルパー関数 ---
+  def get_effect_uv(self, frame_idx):
+    # 0〜7番目のコマは1行目 (v=0)、8番目以降は2行目 (v=32)
+    if frame_idx < 8:
+      u = (frame_idx % 8) * self.width
+      v = 0
+    else:
+      u = ((frame_idx - 8) % 8) * self.width
+      v = 32
+    return u, v
+
+  def get_smoke_uv(self, frame_idx):
+    # 煙も同様に、上段 (v=64) と下段 (v=96) に配置されていると仮定
+    if frame_idx < 8:
+      u = (frame_idx % 8) * self.width
+      v = 64
+    else:
+      u = ((frame_idx - 8) % 8) * self.width
+      v = 96
+    return u, v
 
   def update(self):
     # Qキーで終了
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-    # --- 【テスト用】ドロン単体再生モード（煙なし、フレーム番号表示付き） ---
+    # --- 【テスト用】ドロン単体再生モード（Xキー） ---
     if self.state == "TEST_DRON":
       self.dron_timer += 1
       # 最後の3コマ（10, 11, 12コマ目）だけタメを長くする
@@ -70,7 +91,6 @@ class App:
         self.dron_timer = 0
         self.dron_frame += 1
 
-        # 12コマ目を超えたら（13になったら）テスト終了してリセット
         if self.dron_frame > self.max_dron_frame:
           self.state = "NORMAL"
       return
@@ -138,7 +158,7 @@ class App:
       self.smoke_started = False
       return
 
-    # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタンでドロン単体テスト
+    # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタン
     is_test = (
         pyxel.btnp(pyxel.KEY_X)
         or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_X)
@@ -232,47 +252,35 @@ class App:
 
     # --- 状態に応じた描画 ---
     if self.state == "TEST_DRON":
-      # テスト用：ドロンアニメーション単体のみ描画
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
-        u_dron = dron_idx * self.width
-        pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
+        u, v = self.get_effect_uv(dron_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
-        # 画面上に現在のフレーム番号（0〜12）をテキスト表示して確認できるようにする
-        pyxel.text(
-            int(self.x),
-            int(self.y) - 10,
-            f"FRAME: {dron_idx}",
-            7,  # 7: 白文字
-        )
+        # 現在のフレーム番号を表示
+        pyxel.text(int(self.x), int(self.y) - 10, f"FRAME: {dron_idx}", 7)
 
     elif self.state == "WARP_OUT":
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
-        u_dron = dron_idx * self.width
-        pyxel.blt(int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0)
+        u, v = self.get_effect_uv(dron_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
       if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
-        u_smoke = smoke_idx * self.width
-        pyxel.blt(
-            int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
-        )
+        u, v = self.get_smoke_uv(smoke_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
     elif self.state == "WARP_IN":
       if 0 <= self.smoke_frame <= self.max_smoke_frame:
         smoke_idx = int(self.smoke_frame)
-        u_smoke = smoke_idx * self.width
-        pyxel.blt(
-            int(self.x), int(self.y), 1, u_smoke, 32, self.width, self.height, 0
-        )
+        u, v = self.get_smoke_uv(smoke_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
-        u_dron = dron_idx * self.width
-        pyxel.blt(
-            int(self.x), int(self.y), 1, u_dron, 0, self.width, self.height, 0
-        )
+        u, v = self.get_effect_uv(dron_idx)
+        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
     else:
       # 通常時のプレイヤー描画
