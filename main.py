@@ -47,8 +47,8 @@ class App:
       pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
 
       # Bank 1: エフェクト用（縦2段のスプライトシート）
-      pyxel.images[1].load(0, 0, "karakusa_32_DronF_2.png")
-      pyxel.images[1].load(0, 64, "karakusa_32_Smoke_2.png")
+      pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
+      pyxel.images[1].load(0, 64, "karakusa_32_Smoke.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
