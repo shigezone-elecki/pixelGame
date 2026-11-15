@@ -24,8 +24,8 @@ class App:
     self.anim_speed = 5
     self.idle_step_count = 0
 
-    # --- ワープおよび独立アニメーション用の状態管理 ---
-    self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN", "TEST_DRON"
+    # --- ワープアニメーション用の状態管理 ---
+    self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN"
 
     # 独立したタイムライン用変数
     self.dron_frame = 0.0  # ドロン用フレーム (0 〜 12)
@@ -79,19 +79,6 @@ class App:
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-    # --- 【テスト用】ドロン単体再生モード（Xキー） ---
-    if self.state == "TEST_DRON":
-      self.dron_timer += 1
-      dron_speed = 15 if int(self.dron_frame) >= 10 else 4
-
-      if self.dron_timer >= dron_speed:
-        self.dron_timer = 0
-        self.dron_frame += 1
-
-        if self.dron_frame > self.max_dron_frame:
-          self.state = "NORMAL"
-      return
-
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
       # ① ドロン！の進行（最後の3コマでタメる）
@@ -103,8 +90,8 @@ class App:
         if self.dron_frame <= self.max_dron_frame:
           self.dron_frame += 1
 
-        # ドロンが「6コマ目」に到達したタイミングで煙の再生をスタート！
-        if int(self.dron_frame) >= 6:
+        # ドロンが「8コマ目」に到達したタイミングで煙の再生をスタート（6コマ目から2コマ遅らせました）
+        if int(self.dron_frame) >= 8:
           self.smoke_started = True
 
       # ② ケムリの進行（スタートフラグが立ったらスムーズに再生）
@@ -166,22 +153,10 @@ class App:
       self.smoke_started = False
       return
 
-    # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタン
-    is_test = (
-        pyxel.btnp(pyxel.KEY_X)
-        or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_X)
-        or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B)
-    )
-    if is_test:
-      self.state = "TEST_DRON"
-      self.dron_frame = 0.0
-      self.dron_timer = 0
-      return
-
     self.was_moving = self.moving
     self.moving = False
 
-    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける[cite: 7]
+    # キーボード ＋ バーチャルパッド（DPAD）の入力を両方受け付ける
     is_up = (
         pyxel.btn(pyxel.KEY_UP)
         or pyxel.btn(pyxel.KEY_W)
@@ -255,18 +230,11 @@ class App:
         self.frame_y = 1
 
   def draw(self):
-    # 画面クリア（色番号 1: 暗い青紫）[cite: 7]
+    # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
     # --- 状態に応じた描画 ---
-    if self.state == "TEST_DRON":
-      if 0 <= self.dron_frame <= self.max_dron_frame:
-        dron_idx = int(self.dron_frame)
-        u, v = self.get_effect_uv(dron_idx)
-        pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
-        pyxel.text(int(self.x), int(self.y) - 10, f"FRAME: {dron_idx}", 7)
-
-    elif self.state == "WARP_OUT":
+    if self.state == "WARP_OUT":
       # 【重ね順：ドロン（下）を先に描画】
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
