@@ -25,7 +25,7 @@ class App:
     self.idle_step_count = 0
 
     # --- ワープ（ドロン）用の状態管理 ---
-    self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN"
+    self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN", "TEST_DRON"
     self.effect_timer = 0
     self.dron_frame = 0.0
     self.smoke_frame = 0.0
@@ -54,23 +54,42 @@ class App:
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
-    # --- 1. 消えるときの演出 (WARP_OUT) ---
-    if self.state == "WARP_OUT":
+    # --- 【テスト用】ドロン単体再生モード (Xキー / GAMEPAD_X) ---
+    if self.state == "TEST_DRON":
       self.effect_timer += 1
-
-      # 忍者（ドロン）の最後の3コマ（10, 11, 12コマ目）だけタメを長くする
-      current_int_dron = int(self.dron_frame)
-      dron_speed = 10 if current_int_dron >= 10 else 2
+      # 最後の3コマ（10, 11, 12コマ目）だけタメを長くする
+      dron_speed = 12 if int(self.dron_frame) >= 10 else 3
 
       if self.effect_timer >= dron_speed:
         self.effect_timer = 0
         self.dron_frame += 1
 
-        # ドロン開始から6コマ遅らせて煙をスタートさせる
+        # 煙はタメなしでスムーズに等速進行
+        if self.smoke_frame <= self.max_smoke_frame:
+          self.smoke_frame += 1
+
+        # どちらも最後まで再生しきったら通常に戻る
+        if (
+            self.dron_frame > self.max_dron_frame
+            and self.smoke_frame > self.max_smoke_frame
+        ):
+          self.state = "NORMAL"
+      return
+
+    # --- 1. 消えるときの演出 (WARP_OUT) ---
+    if self.state == "WARP_OUT":
+      self.effect_timer += 1
+      # 最後の3コマ（10, 11, 12コマ目）だけタメを長くする
+      dron_speed = 12 if int(self.dron_frame) >= 10 else 3
+
+      if self.effect_timer >= dron_speed:
+        self.effect_timer = 0
+        self.dron_frame += 1
+
+        # ドロン開始から6コマ遅らせて煙をスタート
         if self.dron_frame >= 6:
           self.smoke_frame += 1
 
-        # ドロンが最後まで行き、かつ煙も最後まで再生しきったらワープ先へ
         if (
             self.dron_frame > self.max_dron_frame
             and self.smoke_frame > self.max_smoke_frame
@@ -78,7 +97,6 @@ class App:
           self.x = random.randint(0, 256 - self.width)
           self.y = random.randint(0, 256 - self.height)
 
-          # 現れる演出（WARP_IN）に移行
           self.state = "WARP_IN"
           self.dron_frame = float(self.max_dron_frame)
           self.smoke_frame = 0.0
@@ -88,21 +106,14 @@ class App:
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
       self.effect_timer += 1
-
-      # 現れるときも、逆再生される忍者の最後の3コマ（元の10〜12コマ目、逆再生時点では前半のフレーム）でタメを作る
-      # dron_frameが 10, 11, 12 のときにタメを入れる
-      current_int_dron = int(self.dron_frame)
-      dron_speed = 10 if current_int_dron >= 10 else 2
-
-      if self.effect_timer >= dron_speed:
+      # 現れるときはタメなしでスムーズに逆再生
+      if self.effect_timer >= 3:
         self.effect_timer = 0
-        self.dron_frame -= 1  # ドロン逆再生
+        self.dron_frame -= 1
 
-        # 煙はタメなしでスムーズに等速（毎フレームまたは2フレームに1回）で最後まで進める
         if self.smoke_frame <= self.max_smoke_frame:
-          self.smoke_frame += 0.8  # スムーズに進行
+          self.smoke_frame += 1
 
-        # ドロンが最初（0）まで戻りきったら通常状態へ復帰
         if self.dron_frame < 0:
           self.state = "NORMAL"
       return
@@ -113,6 +124,19 @@ class App:
     )
     if is_warp:
       self.state = "WARP_OUT"
+      self.dron_frame = 0.0
+      self.smoke_frame = 0.0
+      self.effect_timer = 0
+      return
+
+    # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタンでドロン単体テスト発動
+    is_test = (
+        pyxel.btnp(pyxel.KEY_X)
+        or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_X)
+        or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B)
+    )
+    if is_test:
+      self.state = "TEST_DRON"
       self.dron_frame = 0.0
       self.smoke_frame = 0.0
       self.effect_timer = 0
@@ -143,7 +167,6 @@ class App:
         or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
     )
 
-    # 決定したフラグに基づいて実際に座標と向きを更新
     if is_up:
       self.y -= 0.8
       self.direction = "up"
@@ -161,18 +184,15 @@ class App:
       self.direction = "right"
       self.moving = True
 
-    # 画面外に出ないように制限（256x256基準）[cite: 7]
     self.x = max(0, min(self.x, 256 - self.width))
     self.y = max(0, min(self.y, 256 - self.height))
 
-    # 停止状態に切り替わった瞬間のリセット
     if self.was_moving and not self.moving:
       self.frame_x = 0
       self.frame_y = 0
       self.anim_timer = 0
       self.idle_step_count = 0
 
-    # アニメーションの処理
     if self.moving:
       self.anim_timer += 1
       if self.anim_timer >= self.anim_speed:
@@ -203,7 +223,7 @@ class App:
     pyxel.cls(1)
 
     # --- 状態に応じた描画 ---
-    if self.state == "WARP_OUT":
+    if self.state in ["WARP_OUT", "TEST_DRON"]:
       # 1. キャラクタ（ドロンアニメーション正再生）
       dron_idx = min(int(self.dron_frame), self.max_dron_frame)
       u_dron = dron_idx * self.width
@@ -218,7 +238,7 @@ class App:
         )
 
     elif self.state == "WARP_IN":
-      # 1. 煙アニメーション（スムーズに再生）
+      # 1. 煙アニメーション
       if 0 <= self.smoke_frame <= self.max_smoke_frame:
         smoke_idx = min(int(self.smoke_frame), self.max_smoke_frame)
         u_smoke = smoke_idx * self.width
