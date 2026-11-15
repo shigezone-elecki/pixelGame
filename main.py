@@ -1,3 +1,4 @@
+import random
 import pyxel
 
 
@@ -23,19 +24,76 @@ class App:
     self.anim_speed = 5
     self.idle_step_count = 0
 
+    # --- ワープ（ドロン）用の状態管理 ---
+    self.state = "NORMAL"  # "NORMAL" (通常), "WARP_OUT" (消える演出), "WARP_IN" (現れる演出)
+    self.effect_timer = 0
+    self.dron_frame = 0  # ドロンアニメーションのコマ番
+    self.smoke_frame = 0  # ケムリアニメーションのコマ番
+    self.target_x = self.x
+    self.target_y = self.y
+
     # 【画像の読み込み】
     try:
-      pyxel.images[0].load(0, 0, "karakusa_32_F.png")  # 下向き歩行: (0, 0)
-      pyxel.images[0].load(0, 64, "karakusa_32_B.png")  # 上向き歩行: (0, 64)
-      pyxel.images[0].load(0, 128, "karakusa_32_L.png")  # 左向き歩行: (0, 128)
-      pyxel.images[0].load(0, 192, "karakusa_32_R.png")  # 右向き歩行: (0, 192)
-      pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")  # 停止用: (96, 0)
+      # Bank 0: 歩行・停止グラフィック
+      pyxel.images[0].load(0, 0, "karakusa_32_F.png")
+      pyxel.images[0].load(0, 64, "karakusa_32_B.png")
+      pyxel.images[0].load(0, 128, "karakusa_32_L.png")
+      pyxel.images[0].load(0, 192, "karakusa_32_R.png")
+      pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
+
+      # Bank 1: エフェクト用（ドロン ＆ ケムリ）
+      pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
+      pyxel.images[1].load(0, 32, "karakusa_32_Smoke.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
     pyxel.run(self.update, self.draw)
 
   def update(self):
+    # Qキーで終了
+    if pyxel.btnp(pyxel.KEY_Q):
+      pyxel.quit()
+
+    # --- 1. ワープ（ドロン）中の処理 ---
+    if self.state == "WARP_OUT":
+      # 消えるときのドロンアニメーション進行
+      self.effect_timer += 1
+      if self.effect_timer >= 3:  # アニメーションの速度調整
+        self.effect_timer = 0
+        self.dron_frame += 1
+        # 画像のコマ数に合わせて調整（仮に15コマとして、端に達したらワープ実行）
+        if self.dron_frame >= 15:
+          # ランダムな新しい座標へワープ先を決定
+          self.x = random.randint(0, 256 - self.width)
+          self.y = random.randint(0, 256 - self.height)
+          # 次にケムリ出現演出へ移行
+          self.state = "WARP_IN"
+          self.smoke_frame = 0
+          self.effect_timer = 0
+      return
+
+    elif self.state == "WARP_IN":
+      # 現れるときのケムリアニメーション進行
+      self.effect_timer += 1
+      if self.effect_timer >= 3:
+        self.effect_timer = 0
+        self.smoke_frame += 1
+        # ケムリのコマ数が終わったら通常状態に戻る（仮に15コマ）
+        if self.smoke_frame >= 15:
+          self.state = "NORMAL"
+      return
+
+    # --- 2. 通常時の処理（移動・ワープトリガー） ---
+    # ワープのトリガー（スペースキー または ゲームパッドのAボタン）
+    is_warp = pyxel.btnp(pyxel.KEY_SPACE) or pyxel.btnp(
+        pyxel.GAMEPAD1_BUTTON_A
+    )
+    if is_warp:
+      self.state = "WARP_OUT"
+      self.dron_frame = 0
+      self.effect_timer = 0
+      return
+
     self.was_moving = self.moving
     self.moving = False
 
@@ -116,43 +174,71 @@ class App:
         self.frame_x = 2
         self.frame_y = 1
 
-    # Qキーで終了
-    if pyxel.btnp(pyxel.KEY_Q):
-      pyxel.quit()
-
   def draw(self):
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
-    # プレイヤーの描画
-    u_base = 0
-    v_base = 0
+    # --- 状態に応じた描画 ---
+    if self.state == "WARP_OUT":
+      # ドロンアニメーション（Image 1の y=0 から描画）
+      u = self.dron_frame * self.width
+      v = 0
+      pyxel.blt(
+          int(self.x),
+          int(self.y),
+          1,
+          u,
+          v,
+          self.width,
+          self.height,
+          0,
+      )
 
-    if self.moving:
-      if self.direction == "down":
-        u_base, v_base = 0, 0
-      elif self.direction == "up":
-        u_base, v_base = 0, 64
-      elif self.direction == "left":
-        u_base, v_base = 0, 128
-      elif self.direction == "right":
-        u_base, v_base = 0, 192
+    elif self.state == "WARP_IN":
+      # 現れた場所でのケムリアニメーション（Image 1の y=32 から描画）
+      u = self.smoke_frame * self.width
+      v = 32
+      pyxel.blt(
+          int(self.x),
+          int(self.y),
+          1,
+          u,
+          v,
+          self.width,
+          self.height,
+          0,
+      )
+
     else:
-      u_base, v_base = 96, 0
+      # 通常時のプレイヤー描画
+      u_base = 0
+      v_base = 0
 
-    u = u_base + (self.frame_x * self.width)
-    v = v_base + (self.frame_y * self.height)
+      if self.moving:
+        if self.direction == "down":
+          u_base, v_base = 0, 0
+        elif self.direction == "up":
+          u_base, v_base = 0, 64
+        elif self.direction == "left":
+          u_base, v_base = 0, 128
+        elif self.direction == "right":
+          u_base, v_base = 0, 192
+      else:
+        u_base, v_base = 96, 0
 
-    pyxel.blt(
-        int(self.x),
-        int(self.y),
-        0,
-        u,
-        v,
-        self.width,
-        self.height,
-        0,
-    )
+      u = u_base + (self.frame_x * self.width)
+      v = v_base + (self.frame_y * self.height)
+
+      pyxel.blt(
+          int(self.x),
+          int(self.y),
+          0,
+          u,
+          v,
+          self.width,
+          self.height,
+          0,
+      )
 
 
 App()
