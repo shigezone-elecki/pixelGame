@@ -21,7 +21,7 @@ class App:
     self.frame_x = 0
     self.frame_y = 0
     self.anim_timer = 0
-    self.anim_speed = 5
+    self.anim_speed = 3
     self.idle_step_count = 0
 
     # --- ワープアニメーション用の状態管理 ---
