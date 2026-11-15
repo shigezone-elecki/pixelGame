@@ -33,6 +33,7 @@ class App:
 
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
     self.smoke_timer = 0  # ケムリのコマ送りタイマー
+    self.smoke_started = False  # 煙を遅延スタートさせるためのフラグ
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
@@ -81,7 +82,6 @@ class App:
     # --- 【テスト用】ドロン単体再生モード（Xキー） ---
     if self.state == "TEST_DRON":
       self.dron_timer += 1
-      # 最後の3コマ（10, 11, 12コマ目）だけタメを長くする
       dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
       if self.dron_timer >= dron_speed:
@@ -103,14 +103,19 @@ class App:
         if self.dron_frame <= self.max_dron_frame:
           self.dron_frame += 1
 
-      # ② ケムリの進行
-      self.smoke_timer += 1
-      if self.smoke_timer >= 5:
-        self.smoke_timer = 0
-        if self.smoke_frame <= self.max_smoke_frame:
-          self.smoke_frame += 1
+        # ドロンが「6コマ目」に到達したタイミングで煙の再生をスタート！
+        if int(self.dron_frame) >= 6:
+          self.smoke_started = True
 
-      # 両方のアニメーションが最後まで完了したら、ワープ先へ飛んで現れる演出へ
+      # ② ケムリの進行（スタートフラグが立ったらスムーズに再生）
+      if self.smoke_started:
+        self.smoke_timer += 1
+        if self.smoke_timer >= 5:
+          self.smoke_timer = 0
+          if self.smoke_frame <= self.max_smoke_frame:
+            self.smoke_frame += 1
+
+      # 両方のアニメーションが最後まで完了したらワープ先へ
       if (
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
@@ -124,11 +129,12 @@ class App:
         self.dron_timer = 0
         self.smoke_frame = 0.0
         self.smoke_timer = 0
+        self.smoke_started = True
       return
 
     # --- 2. 現れるときの演出 (WARP_IN) ---
     elif self.state == "WARP_IN":
-      # ① ドロン逆再生（0コマ目まで来たらそこで止めて維持する）
+      # ① ドロン逆再生（0コマ目まで来たらそこで止めて維持）
       self.dron_timer += 1
       if self.dron_timer >= 4:
         self.dron_timer = 0
@@ -142,7 +148,7 @@ class App:
         if self.smoke_frame <= self.max_smoke_frame:
           self.smoke_frame += 1
 
-      # ドロンが1コマ目(0)で維持されつつ、煙が最後まで再生しきったら通常状態へ
+      # 煙が最後まで再生しきったら通常状態へ
       if self.smoke_frame > self.max_smoke_frame:
         self.state = "NORMAL"
       return
@@ -157,6 +163,7 @@ class App:
       self.dron_timer = 0
       self.smoke_frame = 0.0
       self.smoke_timer = 0
+      self.smoke_started = False
       return
 
     # 【テスト用トリガー】Xキー または ゲームパッドのX/Bボタン
@@ -188,9 +195,7 @@ class App:
     is_left = (
         pyxel.btn(pyxel.KEY_LEFT)
         or pyxel.btn(pyxel.KEY_A)
-        or pyxel.btn(pyxel.GAMEPAD1_GAMEPAD1_BUTTON_DPAD_LEFT
-        if hasattr(pyxel, "GAMEPAD1_GAMEPAD1_BUTTON_DPAD_LEFT")
-        else pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
+        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
     )
     is_right = (
         pyxel.btn(pyxel.KEY_RIGHT)
@@ -269,7 +274,7 @@ class App:
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
       # 【重ね順：ケムリ（上）を後に描画して被せる】
-      if 0 <= self.smoke_frame <= self.max_smoke_frame:
+      if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
         u, v = self.get_smoke_uv(smoke_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
