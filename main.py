@@ -180,19 +180,19 @@ class App:
     )
 
     if is_up:
-      self.y -= 2
+      self.y -= 1
       self.direction = "up"
       self.moving = True
     elif is_down:
-      self.y += 2
+      self.y += 1
       self.direction = "down"
       self.moving = True
     elif is_left:
-      self.x -= 2
+      self.x -= 1
       self.direction = "left"
       self.moving = True
     elif is_right:
-      self.x += 2
+      self.x += 1
       self.direction = "right"
       self.moving = True
 
