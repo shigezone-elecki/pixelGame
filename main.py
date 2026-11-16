@@ -283,4 +283,30 @@ class App:
       v_base = 0
 
       if self.moving:
-        if self.direction == "
+        if self.direction == "down":
+          u_base, v_base = 0, 0
+        elif self.direction == "up":
+          u_base, v_base = 0, 64
+        elif self.direction == "left":
+          u_base, v_base = 0, 128
+        elif self.direction == "right":
+          u_base, v_base = 0, 192
+      else:
+        u_base, v_base = 96, 0
+
+      u = u_base + (self.frame_x * self.width)
+      v = v_base + (self.frame_y * self.height)
+
+      pyxel.blt(
+          int(self.x),
+          int(self.y),
+          0,
+          u,
+          v,
+          self.width,
+          self.height,
+          0,
+      )
+
+
+App()
