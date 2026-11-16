@@ -5,7 +5,7 @@ import pyxel
 class App:
 
   def __init__(self):
-    # 画面サイズを 208x208 に調整（8の倍数でドットのひしゃぎを防ぎやすくしています）
+    # 画面サイズを 208x208 に設定
     pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
 
     # プレイヤーの初期状態
@@ -34,9 +34,6 @@ class App:
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
     self.smoke_timer = 0  # ケムリのコマ送りタイマー
     self.smoke_started = False  # 煙を遅延スタートさせるためのフラグ
-
-    # --- フェード（点滅・明滅）効果用の変数 ---
-    self.fade_timer = 0
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
@@ -240,29 +237,36 @@ class App:
 
     # --- 状態に応じた描画 ---
     if self.state == "WARP_OUT":
-      # 【フェード演出の追加】
-      # 煙が出始めてからの進行度合いに応じて、キャラクターを点滅・あるいは一部のドットを間引く（簡易ディザ風フェード）表現
-      # ここでは後半になるにつれてキャラクターがパチパチと消えていく（または光る）ようなドット単位の処理を入れています
-      should_draw_character = True
-      if self.smoke_started:
-        # 後半に向かって点滅頻度を上げて消えていく演出
-        if int(self.smoke_frame) >= 6 and (pyxel.frame_count % 2 == 0):
-          should_draw_character = False
-
-      # ① ドロン！の描画（条件付き）
-      if should_draw_character and (0 <= self.dron_frame <= self.max_dron_frame):
+      # ① ドロン！のキャラクターを描画
+      if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
-      # ② ケムリ（上）を後に描画して被せる
+      # ② 【ディザリング（網点）フェード効果】
+      # 煙が出始めてから、段階的に市松模様のマスク（暗い色や背景色を重ねるドット抜け）を適用して溶かしていく
+      if self.smoke_started:
+        smoke_progress = int(self.smoke_frame)
+        
+        # 煙の進行度（0〜12）に合わせて、キャラクターの上に細かいドットの網（ディザパターン）を重ねる
+        # Pyxelの pset (pixel set) を使って、キャラクターの範囲内を市松模様にくり抜くように背景色(1)でドットを描画します
+        if smoke_progress >= 4:
+          # 段階的に荒い/細かい市松模様でキャラクターを溶かす
+          interval = 3 if smoke_progress < 8 else 2
+          for py in range(int(self.y), int(self.y) + self.height):
+            for px in range(int(self.x), int(self.x) + self.width):
+              # 市松模様の条件（座標の足し算の余りを利用）
+              if (px + py + pyxel.frame_count) % interval == 0:
+                # 背景色（1）のドットを上から置いて削る
+                pyxel.pset(px, py, 1)
+
+      # ③ ケムリ（上）を後に描画して被せる
       if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
         u, v = self.get_smoke_uv(smoke_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
     elif self.state == "WARP_IN":
-      # 現れるときは、煙の中からシャキッと現れるように通常通り描画
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
@@ -279,30 +283,4 @@ class App:
       v_base = 0
 
       if self.moving:
-        if self.direction == "down":
-          u_base, v_base = 0, 0
-        elif self.direction == "up":
-          u_base, v_base = 0, 64
-        elif self.direction == "left":
-          u_base, v_base = 0, 128
-        elif self.direction == "right":
-          u_base, v_base = 0, 192
-      else:
-        u_base, v_base = 96, 0
-
-      u = u_base + (self.frame_x * self.width)
-      v = v_base + (self.frame_y * self.height)
-
-      pyxel.blt(
-          int(self.x),
-          int(self.y),
-          0,
-          u,
-          v,
-          self.width,
-          self.height,
-          0,
-      )
-
-
-App()
+        if self.direction == "
