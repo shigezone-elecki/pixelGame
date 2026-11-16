@@ -5,12 +5,12 @@ import pyxel
 class App:
 
   def __init__(self):
-    # 画面サイズを 256x256 の正方形に統一
-    pyxel.init(206 , 206, title="Pixel Game - Pyxel", fps=60)
+    # 画面サイズを 208x208 に調整（8の倍数でドットのひしゃぎを防ぎやすくしています）
+    pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
 
     # プレイヤーの初期状態
-    self.x = 50
-    self.y = 50
+    self.x = 80
+    self.y = 80
     self.width = 32
     self.height = 32
 
@@ -34,6 +34,9 @@ class App:
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
     self.smoke_timer = 0  # ケムリのコマ送りタイマー
     self.smoke_started = False  # 煙を遅延スタートさせるためのフラグ
+
+    # --- フェード（点滅・明滅）効果用の変数 ---
+    self.fade_timer = 0
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
@@ -85,17 +88,16 @@ class App:
       self.dron_timer += 1
       dron_speed = 15 if int(self.dron_frame) >= 10 else 4
 
-
       if self.dron_timer >= dron_speed:
         self.dron_timer = 0
         if self.dron_frame <= self.max_dron_frame:
           self.dron_frame += 1
 
-        # ドロンが「8コマ目」に到達したタイミングで煙の再生をスタート（6コマ目から2コマ遅らせました）
+        # ドロンが「8コマ目」に到達したタイミングで煙の再生をスタート
         if int(self.dron_frame) >= 8:
           self.smoke_started = True
 
-      # ② ケムリの進行（スタートフラグが立ったらスムーズに再生）
+      # ② ケムリの進行
       if self.smoke_started:
         self.smoke_timer += 1
         if self.smoke_timer >= 5:
@@ -108,8 +110,8 @@ class App:
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
       ):
-        max_x = max(0, 206 - self.width)
-        max_y = max(0, 206 - self.height)
+        max_x = max(0, 208 - self.width)
+        max_y = max(0, 208 - self.height)
         self.x = random.randint(0, max_x)
         self.y = random.randint(0, max_y)
 
@@ -198,8 +200,8 @@ class App:
       self.direction = "right"
       self.moving = True
 
-    self.x = max(0, min(self.x, 206 - self.width))
-    self.y = max(0, min(self.y, 206 - self.height))
+    self.x = max(0, min(self.x, 208 - self.width))
+    self.y = max(0, min(self.y, 208 - self.height))
 
     if self.was_moving and not self.moving:
       self.frame_x = 0
@@ -238,26 +240,34 @@ class App:
 
     # --- 状態に応じた描画 ---
     if self.state == "WARP_OUT":
-      # 【重ね順：ドロン（下）を先に描画】
-      if 0 <= self.dron_frame <= self.max_dron_frame:
+      # 【フェード演出の追加】
+      # 煙が出始めてからの進行度合いに応じて、キャラクターを点滅・あるいは一部のドットを間引く（簡易ディザ風フェード）表現
+      # ここでは後半になるにつれてキャラクターがパチパチと消えていく（または光る）ようなドット単位の処理を入れています
+      should_draw_character = True
+      if self.smoke_started:
+        # 後半に向かって点滅頻度を上げて消えていく演出
+        if int(self.smoke_frame) >= 6 and (pyxel.frame_count % 2 == 0):
+          should_draw_character = False
+
+      # ① ドロン！の描画（条件付き）
+      if should_draw_character and (0 <= self.dron_frame <= self.max_dron_frame):
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
-      # 【重ね順：ケムリ（上）を後に描画して被せる】
+      # ② ケムリ（上）を後に描画して被せる
       if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
         u, v = self.get_smoke_uv(smoke_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
     elif self.state == "WARP_IN":
-      # 【重ね順：ドロン（下）を先に描画】
+      # 現れるときは、煙の中からシャキッと現れるように通常通り描画
       if 0 <= self.dron_frame <= self.max_dron_frame:
         dron_idx = int(self.dron_frame)
         u, v = self.get_effect_uv(dron_idx)
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
-      # 【重ね順：ケムリ（上）を後に描画して被せる】
       if 0 <= self.smoke_frame <= self.max_smoke_frame:
         smoke_idx = int(self.smoke_frame)
         u, v = self.get_smoke_uv(smoke_idx)
