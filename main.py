@@ -9,8 +9,8 @@ class App:
     pyxel.init(160 , 120, title="Pixel Game - Pyxel", fps=60)
 
     # プレイヤーの初期状態
-    self.x = 100
-    self.y = 100
+    self.x = 50
+    self.y = 50
     self.width = 32
     self.height = 32
 
