@@ -108,8 +108,10 @@ class App:
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
       ):
-        self.x = random.randint(0, 160 - self.width)
-        self.y = random.randint(0, 120 - self.height)
+        max_x = max(0, 160 - self.width)
+        max_y = max(0, 120 - self.height)
+        self.x = random.randint(0, max_x)
+        self.y = random.randint(0, max_y)
 
         # 現れる演出（WARP_IN）に移行
         self.state = "WARP_IN"
