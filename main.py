@@ -108,8 +108,8 @@ class App:
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
       ):
-        self.x = random.randint(0, 256 - self.width)
-        self.y = random.randint(0, 256 - self.height)
+        self.x = random.randint(0, 160 - self.width)
+        self.y = random.randint(0, 120 - self.height)
 
         # 現れる演出（WARP_IN）に移行
         self.state = "WARP_IN"
@@ -196,8 +196,8 @@ class App:
       self.direction = "right"
       self.moving = True
 
-    self.x = max(0, min(self.x, 256 - self.width))
-    self.y = max(0, min(self.y, 256 - self.height))
+    self.x = max(0, min(self.x, 160 - self.width))
+    self.y = max(0, min(self.y, 120 - self.height))
 
     if self.was_moving and not self.moving:
       self.frame_x = 0
