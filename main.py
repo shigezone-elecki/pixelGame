@@ -6,7 +6,7 @@ class App:
 
   def __init__(self):
     # 画面サイズを 256x256 の正方形に統一
-    pyxel.init(180 , 180, title="Pixel Game - Pyxel", fps=60, display_scale=2)
+    pyxel.init(206 , 206, title="Pixel Game - Pyxel", fps=60, display_scale=2)
 
     # プレイヤーの初期状態
     self.x = 50
@@ -108,8 +108,8 @@ class App:
           self.dron_frame > self.max_dron_frame
           and self.smoke_frame > self.max_smoke_frame
       ):
-        max_x = max(0, 180 - self.width)
-        max_y = max(0, 180 - self.height)
+        max_x = max(0, 206 - self.width)
+        max_y = max(0, 206 - self.height)
         self.x = random.randint(0, max_x)
         self.y = random.randint(0, max_y)
 
@@ -198,8 +198,8 @@ class App:
       self.direction = "right"
       self.moving = True
 
-    self.x = max(0, min(self.x, 180 - self.width))
-    self.y = max(0, min(self.y, 180 - self.height))
+    self.x = max(0, min(self.x, 206 - self.width))
+    self.y = max(0, min(self.y, 206 - self.height))
 
     if self.was_moving and not self.moving:
       self.frame_x = 0
