@@ -6,7 +6,7 @@ class App:
 
   def __init__(self):
     # 画面サイズを 256x256 の正方形に統一
-    pyxel.init(206 , 206, title="Pixel Game - Pyxel", fps=60, display_scale=2)
+    pyxel.init(206 , 206, title="Pixel Game - Pyxel", fps=60)
 
     # プレイヤーの初期状態
     self.x = 50
