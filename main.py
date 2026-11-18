@@ -40,12 +40,17 @@ class App:
 
     # 【画像の読み込み】
     try:
-      # Bank 0: 歩行・停止グラフィック
+      # Bank 0: 歩行グラフィック（左側：x=0）
       pyxel.images[0].load(0, 0, "karakusa_32_F.png")
       pyxel.images[0].load(0, 64, "karakusa_32_B.png")
       pyxel.images[0].load(0, 128, "karakusa_32_L.png")
       pyxel.images[0].load(0, 192, "karakusa_32_R.png")
+
+      # Bank 0: 各方向の停止・アイドルグラフィック（右側：x=96）
       pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
+      pyxel.images[0].load(96, 64, "karakusa_32_Bstp.png")
+      pyxel.images[0].load(96, 128, "karakusa_32_Lstp.png")
+      pyxel.images[0].load(96, 192, "karakusa_32_Rstp.png")
 
       # Bank 1: エフェクト用（縦2段のスプライトシート）
       pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
@@ -244,20 +249,13 @@ class App:
         pyxel.blt(int(self.x), int(self.y), 1, u, v, self.width, self.height, 0)
 
       # ② 【ディザリング（網点）フェード効果】
-      # 煙が出始めてから、段階的に市松模様のマスク（暗い色や背景色を重ねるドット抜け）を適用して溶かしていく
       if self.smoke_started:
         smoke_progress = int(self.smoke_frame)
-        
-        # 煙の進行度（0〜12）に合わせて、キャラクターの上に細かいドットの網（ディザパターン）を重ねる
-        # Pyxelの pset (pixel set) を使って、キャラクターの範囲内を市松模様にくり抜くように背景色(1)でドットを描画します
         if smoke_progress >= 4:
-          # 段階的に荒い/細かい市松模様でキャラクターを溶かす
           interval = 3 if smoke_progress < 8 else 2
           for py in range(int(self.y), int(self.y) + self.height):
             for px in range(int(self.x), int(self.x) + self.width):
-              # 市松模様の条件（座標の足し算の余りを利用）
               if (px + py + pyxel.frame_count) % interval == 0:
-                # 背景色（1）のドットを上から置いて削る
                 pyxel.pset(px, py, 1)
 
       # ③ ケムリ（上）を後に描画して被せる
@@ -283,16 +281,19 @@ class App:
       v_base = 0
 
       if self.moving:
-        if self.direction == "down":
-          u_base, v_base = 0, 0
-        elif self.direction == "up":
-          u_base, v_base = 0, 64
-        elif self.direction == "left":
-          u_base, v_base = 0, 128
-        elif self.direction == "right":
-          u_base, v_base = 0, 192
+        u_base = 0  # 歩行シートは左側 (x=0)
       else:
-        u_base, v_base = 96, 0
+        u_base = 96  # 停止・アイドルシートは右側 (x=96)
+
+      # 方向ごとの y 座標オフセットを設定
+      if self.direction == "down":
+        v_base = 0
+      elif self.direction == "up":
+        v_base = 64
+      elif self.direction == "left":
+        v_base = 128
+      elif self.direction == "right":
+        v_base = 192
 
       u = u_base + (self.frame_x * self.width)
       v = v_base + (self.frame_y * self.height)
