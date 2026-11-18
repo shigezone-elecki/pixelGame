@@ -219,6 +219,7 @@ class App:
         if self.frame_x == 0:
           self.frame_y = 0 if self.frame_y == 1 else 1
     else:
+      # 停止中のアニメーション（3x2の6コマを順に再生して最後のコマで維持する）
       if self.idle_step_count < 6:
         self.anim_timer += 1
         if self.anim_timer >= self.anim_speed:
@@ -226,12 +227,12 @@ class App:
           self.frame_x += 1
           if self.frame_x >= 3:
             self.frame_x = 0
-            self.frame_y = 0 if self.frame_y == 1 else 1
+            if self.frame_y == 0:
+              self.frame_y = 1
+            else:
+              self.frame_x = 2
+              self.frame_y = 1
           self.idle_step_count += 1
-
-          if self.idle_step_count >= 6:
-            self.frame_x = 2
-            self.frame_y = 1
       else:
         self.frame_x = 2
         self.frame_y = 1
