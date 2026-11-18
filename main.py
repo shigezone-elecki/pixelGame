@@ -219,10 +219,15 @@ class App:
         if self.frame_x == 0:
           self.frame_y = 0 if self.frame_y == 1 else 1
     else:
-      # 停止中のアニメーション（3x2の6コマを順に再生して最後のコマで維持する）
+      # --- 停止中のアニメーション ---
+      # 左右（left, right）のときだけアニメーションスピードを上げる（例: 通常6のところを 3 にする）
+      current_idle_speed = (
+          3 if self.direction in ["left", "right"] else self.anim_speed
+      )
+
       if self.idle_step_count < 6:
         self.anim_timer += 1
-        if self.anim_timer >= self.anim_speed:
+        if self.anim_timer >= current_idle_speed:
           self.anim_timer = 0
           self.frame_x += 1
           if self.frame_x >= 3:
