@@ -222,7 +222,7 @@ class App:
       # --- 停止中のアニメーション ---
       # 左右（left, right）のときだけアニメーションスピードを上げる（例: 通常6のところを 3 にする）
       current_idle_speed = (
-          4 if self.direction in ["left", "right"] else self.anim_speed
+          5 if self.direction in ["left", "right"] else self.anim_speed
       )
 
       if self.idle_step_count < 6:
