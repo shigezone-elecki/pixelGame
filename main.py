@@ -8,6 +8,7 @@ class App:
     # 画面サイズを 208x208 に設定、マウスカーソルも有効化
     pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
     pyxel.mouse(True)
+    pyxel.load("karakusaWalk.pyxres")
 
     # プレイヤーの初期状態
     self.x = 80
@@ -59,6 +60,13 @@ class App:
 
     self.max_dron_frame = 12
     self.max_smoke_frame = 12
+
+    # BGMのロードと再生
+    try:
+      pyxel.load("karakusaWalk.pyxres")  # BGMを保存した .pyxres を指定
+      pyxel.playm(0, loop=True)  # ミュージック 0 番をループ再生する場合
+    except Exception as e:
+      print(f"BGMロードエラー: {e}")
 
     # 【画像の読み込み】
     try:
