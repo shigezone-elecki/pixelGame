@@ -5,7 +5,7 @@ import pyxel
 class App:
 
   def __init__(self):
-    # 画面サイズを 208x208 に設定、マウスカーソルも有効化
+    # 画面サイズを 208x208 に設定、マウスカーソルは初期非表示
     pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
     pyxel.mouse(False)
     pyxel.load("karakusaWalk.pyxres")
@@ -29,33 +29,34 @@ class App:
 
     # 調整モードの表示フラグ（初期値は非表示）
     self.debug_mode = False
-    
+
     # ドロン直後のアイドルアニメーションスキップ用フラグ
     self.skip_idle = False
 
     # 【移動量テーブルの拡張：各方向ごとに「主方向(Main)」と「副方向(Sub)」の2軸を設定】
+    # 【移動量テーブルの拡張：各方向ごとに「主方向(Main)」と「副方向(Sub)」の2軸を設定】
     # --- UP 時 ---
-    self.up_main = [4, 5, 4, 4, 5, 4]   # 上方向への移動量 (Y)[cite: 1]
-    self.up_sub = [0, 2, 1, 0, -2, -1]    # 同時にずらす横方向の量 (X)[cite: 1]
+    self.up_main = list((4, 3, 4, 4, 3, 4))     # 上方向への移動量 (Y)
+    self.up_sub = list((1, 2, 0, -1, -2, 0))    # 同時にずらす横方向の量 (X)
     # --- DOWN 時 ---
-    self.down_main = [5, 3, 3, 5, 3, 3] # 下方向への移動量 (Y)[cite: 1]
-    self.down_sub = [0, 1, 2, 0, -1, -2]  # 同時にずらす横方向の量 (X)[cite: 1]
+    self.down_main = list((5, 4, 3, 5, 4, 3))   # 下方向への移動量 (Y)
+    self.down_sub = list((0, 0, 2, 0, 0, -2))  # 同時にずらす横方向の量 (X)
     # --- LEFT 時 ---
-    self.left_main = [5, 7, 5, 6, 7, 5] # 左方向への移動量 (X)[cite: 1]
-    self.left_sub = [0, 0, 0, 0, 0, 0]  # 同時にずらす縦方向の量 (Y)[cite: 1]
+    self.left_main = list((5, 7, 5, 6, 5, 5))   # 左方向への移動量 (X)
+    self.left_sub = list((0, 0, 0, 0, 0, 0))    # 同時にずらす縦方向の量 (Y)
     # --- RIGHT 時 ---
-    self.right_main = [5, 7, 5, 6, 7, 5] # 右方向への移動量 (X)[cite: 1]
-    self.right_sub = [0, 0, 0, 0, 0, 0] # 同時にずらす縦方向の量 (Y)[cite: 1]
+    self.right_main = list((5, 7, 5, 6, 5, 5))  # 右方向への移動量 (X)
+    self.right_sub = list((0, 0, 0, 0, 0, 0))   # 同時にずらす縦方向の量 (Y)
 
     # --- ワープアニメーション用の状態管理 ---
     self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN"
 
     # 独立したタイムライン用変数
     self.dron_frame = 0.0  # ドロン用フレーム (0 〜 12)
-    self.dron_timer = 0  # ドロンのコマ送りタイマー
+    self.dron_timer = 0    # ドロンのコマ送りタイマー
 
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
-    self.smoke_timer = 0  # ケムリのコマ送りタイマー
+    self.smoke_timer = 0    # ケムリのコマ送りタイマー
     self.smoke_started = False  # 煙を遅延スタートさせるためのフラグ
 
     self.max_dron_frame = 12
@@ -71,20 +72,20 @@ class App:
     # 【画像の読み込み】
     try:
       # Bank 0: 歩行グラフィック（左側：x=0）
-      pyxel.images[0].load(0, 0, "karakusa_32_F.png")
-      pyxel.images[0].load(0, 64, "karakusa_32_B.png")
-      pyxel.images[0].load(0, 128, "karakusa_32_L.png")
-      pyxel.images[0].load(0, 192, "karakusa_32_R.png")
+      pyxel.image(0).load(0, 0, "karakusa_32_F.png")
+      pyxel.image(0).load(0, 64, "karakusa_32_B.png")
+      pyxel.image(0).load(0, 128, "karakusa_32_L.png")
+      pyxel.image(0).load(0, 192, "karakusa_32_R.png")
 
       # Bank 0: 各方向の停止・アイドルグラフィック（右側：x=96）
-      pyxel.images[0].load(96, 0, "karakusa_32_Fstp.png")
-      pyxel.images[0].load(96, 64, "karakusa_32_Bstp.png")
-      pyxel.images[0].load(96, 128, "karakusa_32_Lstp.png")
-      pyxel.images[0].load(96, 192, "karakusa_32_Rstp.png")
+      pyxel.image(0).load(96, 0, "karakusa_32_Fstp.png")
+      pyxel.image(0).load(96, 64, "karakusa_32_Bstp.png")
+      pyxel.image(0).load(96, 128, "karakusa_32_Lstp.png")
+      pyxel.image(0).load(96, 192, "karakusa_32_Rstp.png")
 
       # Bank 1: エフェクト用（縦2段のスプライトシート）
-      pyxel.images[1].load(0, 0, "karakusa_32_DronF.png")
-      pyxel.images[1].load(0, 64, "karakusa_32_Smoke.png")
+      pyxel.image(1).load(0, 0, "karakusa_32_DronF.png")
+      pyxel.image(1).load(0, 64, "karakusa_32_Smoke.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
@@ -116,6 +117,12 @@ class App:
     else:
       return self.frame_x + 3
 
+  # --- 0〜5 のインデックスを (frame_x, frame_y) に設定するヘルパー関数 ---
+  def set_anim_index(self, idx):
+    idx = idx % 6
+    self.frame_x = idx % 3
+    self.frame_y = idx // 3
+
   def update(self):
     # Qキーで終了
     if pyxel.btnp(pyxel.KEY_Q):
@@ -134,7 +141,7 @@ class App:
         pyxel.stop()  # 調整モードに入ったらBGM停止
       else:
         pyxel.playm(0, loop=True)  # 調整モードを抜けたらBGM再開
-        
+
     # --- 調整モード表示中のみマウス操作による数値調整を受け付ける ---
     if self.debug_mode:
       mx, my = pyxel.mouse_x, pyxel.mouse_y
@@ -143,7 +150,7 @@ class App:
 
       if left_clicked or right_clicked:
         delta = 1 if left_clicked else -1
-        
+
         if 85 <= mx <= 165:
           row_idx = (my - 2) // 10
           if 0 <= row_idx < 8:
@@ -162,7 +169,6 @@ class App:
               t, name = target_tables[row_idx]
               t[idx] += delta
               print(f"Updated {name}: {t}")
-
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
       self.dron_timer += 1
@@ -216,10 +222,11 @@ class App:
 
       # 煙が最後まで再生しきったら通常状態へ（前向きの停止パターン最終コマにセット）
       if self.smoke_frame > self.max_smoke_frame:
+        pyxel.stop(0)  # ドロン音を停止
         self.state = "NORMAL"
         self.direction = "down"  # 前向きにリセット
-        self.frame_x = 2         # 停止シート前向き行の最後のコマ(x=2)[cite: 1]
-        self.frame_y = 1         # 停止シートの2段目(v=1)[cite: 1]
+        self.frame_x = 2         # 停止シート前向き行の最後のコマ(x=2)
+        self.frame_y = 1         # 停止シートの2段目(v=1)
         self.anim_timer = 0
         self.idle_step_count = 6 # アニメーションが既に完了した状態にする
         self.skip_idle = True    # ドロン直後の追加アニメーションをスキップ
@@ -238,74 +245,53 @@ class App:
       self.smoke_frame = 0.0
       self.smoke_timer = 0
       self.smoke_started = False
+      pyxel.play(0, 5, loop=True)  # サウンド5番をループ再生
       return
 
-    self.was_moving = self.moving
-    self.moving = False
-
-    is_up = (
-        pyxel.btn(pyxel.KEY_UP)
-        or pyxel.btn(pyxel.KEY_W)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_UP)
-    )
-    is_down = (
-        pyxel.btn(pyxel.KEY_DOWN)
-        or pyxel.btn(pyxel.KEY_S)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_DOWN)
-    )
-    is_left = (
-        pyxel.btn(pyxel.KEY_LEFT)
-        or pyxel.btn(pyxel.KEY_A)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
-    )
-    is_right = (
-        pyxel.btn(pyxel.KEY_RIGHT)
-        or pyxel.btn(pyxel.KEY_D)
-        or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
-    )
-
-    new_direction = self.direction
-    is_input = False
-
-    if is_up:
-      new_direction = "up"
-      is_input = True
-    elif is_down:
-      new_direction = "down"
-      is_input = True
-    elif is_left:
-      new_direction = "left"
-      is_input = True
-    elif is_right:
-      new_direction = "right"
-      is_input = True
-
-    if is_input:
-      self.moving = True
-      self.skip_idle = False  # 移動を始めたらアイドルスキップを解除
-      if new_direction != self.direction:
-        self.direction = new_direction
-        self.frame_x = 0
-        self.frame_y = 0
-        self.anim_timer = 0
-    else:
+    # ==========================================================
+    # 【デバッグモード中】：十字キーで向き変更、右/左ボタンで1コマ送り・戻し
+    # ==========================================================
+    if self.debug_mode:
       self.moving = False
 
-    if self.was_moving and not self.moving:
-      # 動きが止まった瞬間に停止アニメーション用変数をリセット
-      self.frame_x = 0
-      self.frame_y = 0
-      self.anim_timer = 0
-      self.idle_step_count = 0
+      # 十字キー（押し始め）で向きを切り替え、0コマ目に戻す
+      if (
+          pyxel.btnp(pyxel.KEY_UP)
+          or pyxel.btnp(pyxel.KEY_W)
+          or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_DPAD_UP)
+      ):
+        self.direction = "up"
+        self.set_anim_index(0)
+      elif (
+          pyxel.btnp(pyxel.KEY_DOWN)
+          or pyxel.btnp(pyxel.KEY_S)
+          or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_DPAD_DOWN)
+      ):
+        self.direction = "down"
+        self.set_anim_index(0)
+      elif (
+          pyxel.btnp(pyxel.KEY_LEFT)
+          or pyxel.btnp(pyxel.KEY_A)
+          or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
+      ):
+        self.direction = "left"
+        self.set_anim_index(0)
+      elif (
+          pyxel.btnp(pyxel.KEY_RIGHT)
+          or pyxel.btnp(pyxel.KEY_D)
+          or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
+      ):
+        self.direction = "right"
+        self.set_anim_index(0)
 
-    if self.moving:
-      self.anim_timer += 1
-      if self.anim_timer >= self.anim_speed:
-        self.anim_timer = 0
+      # コマ送り（右ボタン：パッドB / Xキー）
+      step_next = pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B) or pyxel.btnp(pyxel.KEY_X)
+      # コマ戻し（左ボタン：パッドY / Zキー）
+      step_prev = pyxel.btnp(pyxel.GAMEPAD1_BUTTON_Y) or pyxel.btnp(pyxel.KEY_Z)
 
+      if step_next:
         anim_idx = self.get_anim_index()
-
-        # 主方向および副方向（サブのズレ）を同時に適用
+        # 現在のコマの移動量を適用して1コマ進める
         if self.direction == "up":
           self.y -= self.up_main[anim_idx]
           self.x += self.up_sub[anim_idx]
@@ -318,37 +304,137 @@ class App:
         elif self.direction == "right":
           self.x += self.right_main[anim_idx]
           self.y += self.right_sub[anim_idx]
+        self.set_anim_index(anim_idx + 1)
 
-        self.frame_x = (self.frame_x + 1) % 3
-        if self.frame_x == 0:
-          self.frame_y = 0 if self.frame_y == 1 else 1
+      elif step_prev:
+        # 1コマ戻してから、そのコマの移動量を逆方向に引き戻す
+        prev_idx = (self.get_anim_index() - 1) % 6
+        self.set_anim_index(prev_idx)
+        if self.direction == "up":
+          self.y += self.up_main[prev_idx]
+          self.x -= self.up_sub[prev_idx]
+        elif self.direction == "down":
+          self.y -= self.down_main[prev_idx]
+          self.x -= self.down_sub[prev_idx]
+        elif self.direction == "left":
+          self.x += self.left_main[prev_idx]
+          self.y -= self.left_sub[prev_idx]
+        elif self.direction == "right":
+          self.x -= self.right_main[prev_idx]
+          self.y -= self.right_sub[prev_idx]
+    # ==========================================================
+    # 【通常モード中】：これまでの連続移動処理
+    # ==========================================================
     else:
-      # --- 停止中のアニメーション（停止パターン） ---
-      if self.skip_idle:
-        # ドロン直後は前向きの停止パターン最終コマ（frame_x=2, frame_y=1）で固定[cite: 1]
-        self.frame_x = 2
-        self.frame_y = 1
-      else:
-        current_idle_speed = (
-            4 if self.direction in ["left", "right"] else self.anim_speed
-        )
+      self.was_moving = self.moving
+      self.moving = False
 
-        if self.idle_step_count < 6:
-          self.anim_timer += 1
-          if self.anim_timer >= current_idle_speed:
-            self.anim_timer = 0
-            self.frame_x += 1
-            if self.frame_x >= 3:
-              self.frame_x = 0
-              if self.frame_y == 0:
-                self.frame_y = 1
-              else:
-                self.frame_x = 2
-                self.frame_y = 1
-            self.idle_step_count += 1
-        else:
+      is_up = (
+          pyxel.btn(pyxel.KEY_UP)
+          or pyxel.btn(pyxel.KEY_W)
+          or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_UP)
+      )
+      is_down = (
+          pyxel.btn(pyxel.KEY_DOWN)
+          or pyxel.btn(pyxel.KEY_S)
+          or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_DOWN)
+      )
+      is_left = (
+          pyxel.btn(pyxel.KEY_LEFT)
+          or pyxel.btn(pyxel.KEY_A)
+          or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
+      )
+      is_right = (
+          pyxel.btn(pyxel.KEY_RIGHT)
+          or pyxel.btn(pyxel.KEY_D)
+          or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
+      )
+
+      new_direction = self.direction
+      is_input = False
+
+      if is_up:
+        new_direction = "up"
+        is_input = True
+      elif is_down:
+        new_direction = "down"
+        is_input = True
+      elif is_left:
+        new_direction = "left"
+        is_input = True
+      elif is_right:
+        new_direction = "right"
+        is_input = True
+
+      if is_input:
+        self.moving = True
+        self.skip_idle = False  # 移動を始めたらアイドルスキップを解除
+        if new_direction != self.direction:
+          self.direction = new_direction
+          self.frame_x = 0
+          self.frame_y = 0
+          self.anim_timer = 0
+      else:
+        self.moving = False
+
+      if self.was_moving and not self.moving:
+        # 動きが止まった瞬間に停止アニメーション用変数をリセット
+        self.frame_x = 0
+        self.frame_y = 0
+        self.anim_timer = 0
+        self.idle_step_count = 0
+
+      if self.moving:
+        self.anim_timer += 1
+        if self.anim_timer >= self.anim_speed:
+          self.anim_timer = 0
+
+          anim_idx = self.get_anim_index()
+
+          # 主方向および副方向（サブのズレ）を同時に適用
+          if self.direction == "up":
+            self.y -= self.up_main[anim_idx]
+            self.x += self.up_sub[anim_idx]
+          elif self.direction == "down":
+            self.y += self.down_main[anim_idx]
+            self.x += self.down_sub[anim_idx]
+          elif self.direction == "left":
+            self.x -= self.left_main[anim_idx]
+            self.y += self.left_sub[anim_idx]
+          elif self.direction == "right":
+            self.x += self.right_main[anim_idx]
+            self.y += self.right_sub[anim_idx]
+
+          self.frame_x = (self.frame_x + 1) % 3
+          if self.frame_x == 0:
+            self.frame_y = 0 if self.frame_y == 1 else 1
+      else:
+        # --- 停止中のアニメーション（停止パターン） ---
+        if self.skip_idle:
+          # ドロン直後は前向きの停止パターン最終コマ（frame_x=2, frame_y=1）で固定
           self.frame_x = 2
           self.frame_y = 1
+        else:
+          current_idle_speed = (
+              4 if self.direction in ["left", "right"] else self.anim_speed
+          )
+
+          if self.idle_step_count < 6:
+            self.anim_timer += 1
+            if self.anim_timer >= current_idle_speed:
+              self.anim_timer = 0
+              self.frame_x += 1
+              if self.frame_x >= 3:
+                self.frame_x = 0
+                if self.frame_y == 0:
+                  self.frame_y = 1
+                else:
+                  self.frame_x = 2
+                  self.frame_y = 1
+              self.idle_step_count += 1
+          else:
+            self.frame_x = 2
+            self.frame_y = 1
 
     # 画面外に出ないように制限
     self.x = max(0, min(self.x, 208 - self.width))
@@ -395,8 +481,8 @@ class App:
       u_base = 0
       v_base = 0
 
-      if self.moving:
-        u_base = 0  # 歩行シートは左側 (x=0)
+      if self.moving or self.debug_mode:
+        u_base = 0   # 歩行シートは左側 (x=0)
       else:
         u_base = 96  # 停止・アイドルシートは右側 (x=96)
 
