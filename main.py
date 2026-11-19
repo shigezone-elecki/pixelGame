@@ -7,7 +7,7 @@ class App:
   def __init__(self):
     # 画面サイズを 208x208 に設定、マウスカーソルも有効化
     pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
-    pyxel.mouse(True)
+    pyxel.mouse(False)
     pyxel.load("karakusaWalk.pyxres")
 
     # プレイヤーの初期状態
@@ -128,7 +128,13 @@ class App:
         or pyxel.btnp(pyxel.KEY_BACKSPACE)
     ):
       self.debug_mode = not self.debug_mode
+      pyxel.mouse(self.debug_mode)  # 調整モード中だけカーソル表示
 
+      if self.debug_mode:
+        pyxel.stop()  # 調整モードに入ったらBGM停止
+      else:
+        pyxel.playm(0, loop=True)  # 調整モードを抜けたらBGM再開
+        
     # --- 調整モード表示中のみマウス操作による数値調整を受け付ける ---
     if self.debug_mode:
       mx, my = pyxel.mouse_x, pyxel.mouse_y
