@@ -1,3 +1,4 @@
+import os
 import random
 import pyxel
 
@@ -8,11 +9,10 @@ class App:
     # 画面サイズを 208x208 に設定、マウスカーソルは初期非表示
     pyxel.init(208, 208, title="Pixel Game - Pyxel", fps=60)
     pyxel.mouse(False)
-    pyxel.load("karakusaWalk.pyxres")
 
     # プレイヤーの初期状態
-    self.x = 80
-    self.y = 80
+    self.x = 64
+    self.y = 98
     self.width = 32
     self.height = 32
 
@@ -29,34 +29,35 @@ class App:
 
     # 調整モードの表示フラグ（初期値は非表示）
     self.debug_mode = False
+    # パレット書き出し完了メッセージの表示タイマー  <-- ★ここを追加
+    self.export_msg_timer = 0
 
     # ドロン直後のアイドルアニメーションスキップ用フラグ
     self.skip_idle = False
 
     # 【移動量テーブルの拡張：各方向ごとに「主方向(Main)」と「副方向(Sub)」の2軸を設定】
-    # 【移動量テーブルの拡張：各方向ごとに「主方向(Main)」と「副方向(Sub)」の2軸を設定】
     # --- UP 時 ---
-    self.up_main = list((4, 3, 4, 4, 3, 4))     # 上方向への移動量 (Y)
-    self.up_sub = list((1, 2, 0, -1, -2, 0))    # 同時にずらす横方向の量 (X)
+    self.up_main = list((4, 3, 4, 4, 3, 4))  # 上方向への移動量 (Y)
+    self.up_sub = list((1, 2, 0, -1, -2, 0))  # 同時にずらす横方向の量 (X)
     # --- DOWN 時 ---
-    self.down_main = list((5, 4, 3, 5, 4, 3))   # 下方向への移動量 (Y)
+    self.down_main = list((5, 4, 3, 5, 4, 3))  # 下方向への移動量 (Y)
     self.down_sub = list((0, 0, 2, 0, 0, -2))  # 同時にずらす横方向の量 (X)
     # --- LEFT 時 ---
-    self.left_main = list((5, 7, 5, 6, 5, 5))   # 左方向への移動量 (X)
-    self.left_sub = list((0, 0, 0, 0, 0, 0))    # 同時にずらす縦方向の量 (Y)
+    self.left_main = list((5, 7, 5, 6, 5, 5))  # 左方向への移動量 (X)
+    self.left_sub = list((0, 0, 0, 0, 0, 0))  # 同時にずらす縦方向の量 (Y)
     # --- RIGHT 時 ---
     self.right_main = list((5, 7, 5, 6, 5, 5))  # 右方向への移動量 (X)
-    self.right_sub = list((0, 0, 0, 0, 0, 0))   # 同時にずらす縦方向の量 (Y)
+    self.right_sub = list((0, 0, 0, 0, 0, 0))  # 同時にずらす縦方向の量 (Y)
 
     # --- ワープアニメーション用の状態管理 ---
     self.state = "NORMAL"  # "NORMAL", "WARP_OUT", "WARP_IN"
 
     # 独立したタイムライン用変数
     self.dron_frame = 0.0  # ドロン用フレーム (0 〜 12)
-    self.dron_timer = 0    # ドロンのコマ送りタイマー
+    self.dron_timer = 0  # ドロンのコマ送りタイマー
 
     self.smoke_frame = 0.0  # ケムリ用フレーム (0 〜 12)
-    self.smoke_timer = 0    # ケムリのコマ送りタイマー
+    self.smoke_timer = 0  # ケムリのコマ送りタイマー
     self.smoke_started = False  # 煙を遅延スタートさせるためのフラグ
 
     self.max_dron_frame = 12
@@ -69,7 +70,7 @@ class App:
     except Exception as e:
       print(f"BGMロードエラー: {e}")
 
-    # 【画像の読み込み】
+    # 【画像の読み込み（.pyxres の後に読み込んで上書きを防止）】
     try:
       # Bank 0: 歩行グラフィック（左側：x=0）
       pyxel.image(0).load(0, 0, "karakusa_32_F.png")
@@ -86,10 +87,55 @@ class App:
       # Bank 1: エフェクト用（縦2段のスプライトシート）
       pyxel.image(1).load(0, 0, "karakusa_32_DronF.png")
       pyxel.image(1).load(0, 64, "karakusa_32_Smoke.png")
+
+      # Bank 2: 背景画像
+      pyxel.image(2).load(0, 0, "BGtest001.png")
     except Exception as e:
       print(f"画像ロードエラー: {e}")
 
     pyxel.run(self.update, self.draw)
+
+  # --- 現在のパレットをAseprite用(.gpl)に書き出すヘルパー関数 ---
+  def export_palette_for_aseprite(self, filename="pyxel_palette.gpl"):
+    lines = [
+        "GIMP Palette",
+        "Name: Pyxel Palette",
+        "Columns: 16",
+        "#",
+    ]
+    for i, col in enumerate(pyxel.colors):
+      r = (col >> 16) & 0xFF
+      g = (col >> 8) & 0xFF
+      b = col & 0xFF
+      lines.append(f"{r:3d} {g:3d} {b:3d}\tColor {i}")
+    content = "\n".join(lines) + "\n"
+
+    # Webブラウザ環境（Pyodide）の場合はブラウザ経由でダウンロード
+    try:
+      import js
+      blob = js.Blob.new([content], {"type": "text/plain;charset=utf-8"})
+      url = js.URL.createObjectURL(blob)
+      a = js.document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      js.URL.revokeObjectURL(url)
+      print(f"ブラウザからダウンロードしました: {filename}")
+      self.export_msg_timer = 120
+      return
+    except ImportError:
+      pass  # PCの通常Python環境の場合は下の処理へ進む
+
+    # PCの通常Python環境の場合はローカルに保存
+    try:
+      base_dir = os.path.dirname(os.path.abspath(__file__))
+      save_path = os.path.join(base_dir, filename)
+      with open(save_path, "w", encoding="utf-8") as f:
+        f.write(content)
+      print(f"パレットを書き出しました: {save_path}")
+      self.export_msg_timer = 120
+    except Exception as e:
+      print(f"パレット書き出しエラー: {e}")
 
   # --- 縦2段（1行8個）のシートから正しい (u, v) を計算するヘルパー関数 ---
   def get_effect_uv(self, frame_idx):
@@ -128,6 +174,10 @@ class App:
     if pyxel.btnp(pyxel.KEY_Q):
       pyxel.quit()
 
+    # ★ここを追加（メッセージ表示タイマーを減らす）
+    if self.export_msg_timer > 0:
+      self.export_msg_timer -= 1
+
     # --- セレクトボタン（押し始め）で調整モードの表示・非表示をトグル ---
     if (
         pyxel.btnp(pyxel.GAMEPAD1_BUTTON_BACK)
@@ -147,6 +197,14 @@ class App:
       mx, my = pyxel.mouse_x, pyxel.mouse_y
       left_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT)
       right_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_RIGHT)
+
+      # ★ここを追加（パレット書き出しボタンのクリック判定）
+      if left_clicked and (85 <= mx <= 133) and (84 <= my <= 94):
+        self.export_palette_for_aseprite()
+
+      # ★元の `if left_clicked or right_clicked:` を `elif` に変更
+      elif left_clicked or right_clicked:
+        delta = 1 if left_clicked else -1
 
       if left_clicked or right_clicked:
         delta = 1 if left_clicked else -1
@@ -169,6 +227,7 @@ class App:
               t, name = target_tables[row_idx]
               t[idx] += delta
               print(f"Updated {name}: {t}")
+
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
       self.dron_timer += 1
@@ -225,12 +284,12 @@ class App:
         pyxel.stop(0)  # ドロン音を停止
         self.state = "NORMAL"
         self.direction = "down"  # 前向きにリセット
-        self.frame_x = 2         # 停止シート前向き行の最後のコマ(x=2)
-        self.frame_y = 1         # 停止シートの2段目(v=1)
+        self.frame_x = 2  # 停止シート前向き行の最後のコマ(x=2)
+        self.frame_y = 1  # 停止シートの2段目(v=1)
         self.anim_timer = 0
-        self.idle_step_count = 6 # アニメーションが既に完了した状態にする
-        self.skip_idle = True    # ドロン直後の追加アニメーションをスキップ
-        self.moving = False      # キー押しっぱなしによる誤作動を防ぐため移動状態を強制解除
+        self.idle_step_count = 6  # アニメーションが既に完了した状態にする
+        self.skip_idle = True  # ドロン直後の追加アニメーションをスキップ
+        self.moving = False  # キー押しっぱなしによる誤作動を防ぐため移動状態を強制解除
         self.was_moving = False  # 状態変化フラグもリセット
       return
 
@@ -444,6 +503,9 @@ class App:
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
+    # 背景画像（Bank 2）を画面全体に描画
+    pyxel.blt(0, 0, 2, 0, 0, 208, 208)
+
     # --- 状態に応じた描画 ---
     if self.state == "WARP_OUT":
       if 0 <= self.dron_frame <= self.max_dron_frame:
@@ -455,10 +517,18 @@ class App:
         smoke_progress = int(self.smoke_frame)
         if smoke_progress >= 4:
           interval = 3 if smoke_progress < 8 else 2
-          for py in range(int(self.y), int(self.y) + self.height):
-            for px in range(int(self.x), int(self.x) + self.width):
-              if (px + py + pyxel.frame_count) % interval == 0:
-                pyxel.pset(px, py, 1)
+          dron_idx = min(int(self.dron_frame), self.max_dron_frame)
+          du, dv = self.get_effect_uv(dron_idx)
+          img1 = pyxel.image(1)
+
+          for dy in range(self.height):
+            for dx in range(self.width):
+              # ドロン画像側のピクセルが透明色(0)でない部分だけディザリングを適用
+              if img1.pget(du + dx, dv + dy) != 0:
+                px = int(self.x) + dx
+                py = int(self.y) + dy
+                if (px + py + pyxel.frame_count) % interval == 0:
+                  pyxel.pset(px, py, 1)
 
       if self.smoke_started and (0 <= self.smoke_frame <= self.max_smoke_frame):
         smoke_idx = int(self.smoke_frame)
@@ -482,7 +552,7 @@ class App:
       v_base = 0
 
       if self.moving or self.debug_mode:
-        u_base = 0   # 歩行シートは左側 (x=0)
+        u_base = 0  # 歩行シートは左側 (x=0)
       else:
         u_base = 96  # 停止・アイドルシートは右側 (x=96)
 
@@ -526,7 +596,7 @@ class App:
 
       start_y = 2
       for label, table, dir_name in display_tables:
-        is_active_dir = (self.direction == dir_name)
+        is_active_dir = self.direction == dir_name
         row_col = 8 if is_active_dir else 7
 
         # ラベルを描画
@@ -542,6 +612,20 @@ class App:
         pyxel.text(x_offset, start_y, "]", row_col)
 
         start_y += 10
+
+      # --- ★ここから下を追加：パレット書き出しボタンの描画 ---
+      btn_x, btn_y, btn_w, btn_h = 85, 84, 48, 10
+      is_hover = (btn_x <= pyxel.mouse_x <= btn_x + btn_w) and (
+          btn_y <= pyxel.mouse_y <= btn_y + btn_h
+      )
+      btn_bg = 11 if is_hover else 1
+      pyxel.rect(btn_x, btn_y, btn_w, btn_h, btn_bg)
+      pyxel.rectb(btn_x, btn_y, btn_w, btn_h, 7)
+      pyxel.text(btn_x + 4, btn_y + 2, "EXP PAL", 7)
+
+      # 書き出し完了メッセージ
+      if self.export_msg_timer > 0:
+        pyxel.text(85, 97, "SAVED .gpl!", 11)
 
 
 App()
