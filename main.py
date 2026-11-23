@@ -117,6 +117,7 @@ class App:
     self.max_fall_speed = 6.0  # 最大落下速度
     self.on_ground = False # 接地フラグ
     self.on_stair = False  # 階段接触フラグ
+    self.climbing = False  # ← ★追加：はしご昇降中フラグ
 
     pyxel.run(self.update, self.draw)
 
@@ -204,8 +205,8 @@ class App:
 
   # --- プレイヤーの当たり判定枠（足元・胴体）を取得 ---
   def get_hitbox(self, x, y):
-    # 32x32画像のうち、左右8px・上8pxを削り、下端を1px広げることで床の1px上に着地させる
-    return (x + 8, y + 8, x + self.width - 9, y + self.height)
+    # 32x32画像のうち、左右8px・上8pxを削った内側を当たり判定にする
+    return (x + 8, y + 8, x + self.width - 9, y + self.height - 1)
 
   # --- 指定座標で「床・壁」または「階段」に触れているか判定 ---
   def check_tile_collision(self, x, y, target_tiles):
@@ -221,6 +222,27 @@ class App:
         if self.get_tile_at(check_x, check_y) in target_tiles:
           return True
     return False
+
+  # --- 触れているはしご（2タイル幅）の中央にキャラを合わせるX座標を計算 ---
+  def get_stair_center_x(self):
+    x1, y1, x2, y2 = self.get_hitbox(self.x, self.y)
+    stair_tx_list = []
+    # 体〜足元1px下までの範囲にあるはしごタイルのXマス番号を集める
+    for check_y in range(int(y1), int(y2) + 2, 4):
+      for check_x in range(int(x1), int(x2) + 1, 4):
+        tx = int(check_x // 8)
+        ty = int(check_y // 8)
+        if 0 <= tx < 26 and 0 <= ty < 26:
+          if pyxel.tilemaps[0].pget(tx, ty) in self.STAIR_TILES:
+            if tx not in stair_tx_list:
+              stair_tx_list.append(tx)
+    if stair_tx_list:
+      # 見つかったはしごタイルの左端と右端の中間ピクセルを計算
+      min_px = min(stair_tx_list) * 8
+      max_px = (max(stair_tx_list) + 1) * 8
+      center_px = (min_px + max_px) / 2.0
+      return int(round(center_px - self.width / 2.0))
+    return self.x
 
   def update(self):
     # Qキーで終了
@@ -449,11 +471,14 @@ class App:
       self.was_moving = self.moving
       self.moving = False
 
-      # 1. 現在「階段」に触れているか、または「足元1px下」に階段があるかチェック
-      self.on_stair = (
-          self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
-          or self.check_tile_collision(self.x, self.y + 1, self.STAIR_TILES)
-      )
+      # 1. 現在「階段」に触れているか、または「足元2px下（床の1px上＋床自体）」に階段があるかチェック
+      body_on_stair = self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+      foot_on_stair = self.check_tile_collision(self.x, self.y + 2, self.STAIR_TILES)
+      self.on_stair = body_on_stair or foot_on_stair
+
+      # 階段から完全に離れたら昇降モードを解除
+      if not self.on_stair:
+        self.climbing = False
 
       is_up = (
           pyxel.btn(pyxel.KEY_UP)
@@ -476,9 +501,30 @@ class App:
           or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
       )
 
-      # 階段にいないときは「上移動」の入力を無効化（空中浮遊防止）
+      # 階段にいないときは「上移動」を無効化
       if not self.on_stair:
         is_up = False
+
+      # 階段に触れている状態で上下キーを押したら「昇降モード」に入り、中央へ位置合わせ
+      if self.on_stair and (is_up or is_down):
+        # ただし下キーのとき、すでに下の床に着地していて下にはしごがない場合は昇降しない
+        if is_down and not foot_on_stair and self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES):
+          self.climbing = False
+        else:
+          self.climbing = True
+          self.x = self.get_stair_center_x()
+
+      # 昇降モード中でも、上下キーを離して「左右キー」を押したときは、横が壁でなければいつでも抜けられるようにする
+      if self.climbing and not (is_up or is_down):
+        if is_left and not self.check_tile_collision(self.x - 4, self.y, self.SOLID_TILES):
+          self.climbing = False
+        elif is_right and not self.check_tile_collision(self.x + 4, self.y, self.SOLID_TILES):
+          self.climbing = False
+
+      # まだ昇降モード中の場合（上下キーを押している最中や、左右が壁で塞がれている場合）のみ左右をロック
+      if self.climbing:
+        is_left = False
+        is_right = False
 
       new_direction = self.direction
       is_input = False
@@ -513,7 +559,7 @@ class App:
         self.anim_timer = 0
         self.idle_step_count = 0
 
-      # --- 2. キー入力による移動（1pxずつ判定して壁めり込み防止） ---
+      # --- 2. キー入力による移動 ---
       if self.moving:
         self.anim_timer += 1
         if self.anim_timer >= self.anim_speed:
@@ -521,36 +567,55 @@ class App:
           anim_idx = self.get_anim_index()
 
           dx, dy = 0, 0
-          if self.direction == "up" and self.on_stair:
+          if self.direction == "up" and self.climbing:
             dy = -self.up_main[anim_idx]
-            dx = self.up_sub[anim_idx]
-          elif self.direction == "down":
-            # 階段のときだけ下移動の移動量テーブルを適用（平地では重力に任せる）
-            if self.on_stair:
-              dy = self.down_main[anim_idx]
-              dx = self.down_sub[anim_idx]
-          elif self.direction == "left":
+            dx = 0  # はしご中央を維持するため横ブレなし
+          elif self.direction == "down" and self.climbing:
+            dy = self.down_main[anim_idx]
+            dx = 0  # はしご中央を維持するため横ブレなし
+          elif self.direction == "left" and not self.climbing:
             dx = -self.left_main[anim_idx]
             dy = self.left_sub[anim_idx]
-          elif self.direction == "right":
+          elif self.direction == "right" and not self.climbing:
             dx = self.right_main[anim_idx]
             dy = self.right_sub[anim_idx]
 
-          # X方向の移動と壁判定（階段に触れている間は床・壁をすり抜ける）
+          # X方向の移動と壁判定
           step_x = 1 if dx > 0 else -1
           for _ in range(abs(dx)):
-            if self.on_stair or not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
+            if not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
               self.x += step_x
             else:
               break
 
-          # Y方向の移動と床・天井判定（階段に触れている間は床をすり抜ける）
+          # Y方向の移動と床・天井判定
           step_y = 1 if dy > 0 else -1
           for _ in range(abs(dy)):
-            if self.on_stair or not self.check_tile_collision(self.x, self.y + step_y, self.SOLID_TILES):
+            if self.climbing:
+              # 下に降りているとき：足元2px下（＝床の1px上）に「はしごではない床」があれば着地とみなして即解除
+              if step_y > 0:
+                x1, _, x2, y2 = self.get_hitbox(self.x, self.y)
+                check_y = y2 + 2
+                foot_hits_solid = (
+                    self.get_tile_at(x1, check_y) in self.SOLID_TILES
+                    or self.get_tile_at(x2, check_y) in self.SOLID_TILES
+                    or self.get_tile_at((x1 + x2) // 2, check_y) in self.SOLID_TILES
+                )
+                foot_hits_stair = (
+                    self.get_tile_at(x1, check_y) in self.STAIR_TILES
+                    or self.get_tile_at(x2, check_y) in self.STAIR_TILES
+                    or self.get_tile_at((x1 + x2) // 2, check_y) in self.STAIR_TILES
+                )
+                if foot_hits_solid and not foot_hits_stair:
+                  self.climbing = False
+                  break
+
               self.y += step_y
             else:
-              break
+              if not self.check_tile_collision(self.x, self.y + step_y, self.SOLID_TILES):
+                self.y += step_y
+              else:
+                break
 
           self.frame_x = (self.frame_x + 1) % 3
           if self.frame_x == 0:
@@ -582,14 +647,18 @@ class App:
             self.frame_y = 1
 
       # --- 3. 重力処理（階段に触れていないときのみ落下） ---
-      # 移動後に改めて階段接触を再チェック
-      self.on_stair = self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+      self.on_stair = (
+          self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+          or self.check_tile_collision(self.x, self.y + 2, self.STAIR_TILES)
+      )
+      if not self.on_stair:
+        self.climbing = False
 
       if self.on_stair:
         self.vy = 0.0
         self.on_ground = False
       else:
-        # 階段から抜けた直後などに足元が少しだけ床に埋まっていたら上に押し出す（最大8pxまで救済）
+        # 階段から抜けた直後などに足元が少しだけ床に埋まっていたら上に押し出す
         if self.check_tile_collision(self.x, self.y, self.SOLID_TILES):
           for lift in range(1, 9):
             if not self.check_tile_collision(self.x, self.y - lift, self.SOLID_TILES):
@@ -601,8 +670,7 @@ class App:
         self.on_ground = False
 
         for _ in range(fall_pixels):
-          # 1px下に床があるか、または画面最下部に到達したか
-          if self.y + 1 > 208 - self.height or self.check_tile_collision(self.x, self.y + 1, self.SOLID_TILES):
+          if self.y + 2 > 208 - self.height or self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES):
             self.vy = 0.0
             self.on_ground = True
             break
