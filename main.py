@@ -106,18 +106,29 @@ class App:
        (0, 2) 
        ] 
 
-    # はしご（階段）のタイル定義
+    # はしご（階段）のタイル定義（中央スナップ＆昇降ロックあり）
     self.STAIR_TILES = [
-       (12, 1), (15, 1), (13, 1), (14, 1),(15, 1),(10, 1), (9, 2), (11, 1)
+       (12, 1), (15, 1), (13, 1), (14, 1), (10, 1), (11, 1)
+    ]
+
+    # 上下左右に自由移動できるタイル定義（重力無効・スナップなし）
+    self.FREE_MOVE_TILES = [
+    #   (9, 2), (0, 1), (1, 1)
+       (9, 2)
     ]
 
     # 重力設定
-    self.vy = 0.0          # 落下速度
-    self.gravity = 0.4     # 重力の強さ
-    self.max_fall_speed = 6.0  # 最大落下速度
-    self.on_ground = False # 接地フラグ
-    self.on_stair = False  # 階段接触フラグ
-    self.climbing = False  # ← ★追加：はしご昇降中フラグ
+    self.vy = 0.0             # 落下速度
+    self.gravity = 0.4        # 重力の強さ
+    self.max_fall_speed = 6.0 # 最大落下速度
+    self.on_ground = False    # 接地フラグ
+    self.on_stair = False     # 階段接触フラグ
+    self.on_free_tile = False # 自由移動タイル接触フラグ
+    self.climbing = False     # はしご昇降中フラグ
+    self.lock_stair_up = False # 登りきった直後の上入力ロック
+    self.lock_stair_dn = False # 降りきった直後の下入力ロック
+    self.clicked_tile = (0, 0) # ← ★追加：クリックした場所のタイルID (u, v)
+    self.clicked_pos = None    # ← ★追加：クリックしたマップ上のマス座標 (tx, ty)
 
     pyxel.run(self.update, self.draw)
 
@@ -138,7 +149,7 @@ class App:
 
     # Webブラウザ環境（Pyodide）の場合はブラウザ経由でダウンロード
     try:
-      import js
+      import js # type: ignore
       blob = js.Blob.new([content], {"type": "text/plain;charset=utf-8"})
       url = js.URL.createObjectURL(blob)
       a = js.document.createElement("a")
@@ -223,25 +234,39 @@ class App:
           return True
     return False
 
-  # --- 触れているはしご（2タイル幅）の中央にキャラを合わせるX座標を計算 ---
+  # --- 触れているはしご全体（左右の隣接タイルも含む）の中央X座標を計算 ---
   def get_stair_center_x(self):
     x1, y1, x2, y2 = self.get_hitbox(self.x, self.y)
-    stair_tx_list = []
-    # 体〜足元1px下までの範囲にあるはしごタイルのXマス番号を集める
-    for check_y in range(int(y1), int(y2) + 2, 4):
+    hit_tiles = []
+
+    # 1. まずプレイヤーの体〜足元2px下が触れているはしごタイル(tx, ty)を1つ見つける
+    for check_y in range(int(y1), int(y2) + 3, 4):
       for check_x in range(int(x1), int(x2) + 1, 4):
         tx = int(check_x // 8)
         ty = int(check_y // 8)
         if 0 <= tx < 26 and 0 <= ty < 26:
           if pyxel.tilemaps[0].pget(tx, ty) in self.STAIR_TILES:
-            if tx not in stair_tx_list:
-              stair_tx_list.append(tx)
-    if stair_tx_list:
-      # 見つかったはしごタイルの左端と右端の中間ピクセルを計算
-      min_px = min(stair_tx_list) * 8
-      max_px = (max(stair_tx_list) + 1) * 8
+            hit_tiles.append((tx, ty))
+
+    if hit_tiles:
+      # 最初に見つかったはしごタイルを基準に、同じ高さ(ty)の左右隣もはしごか調べる
+      base_tx, base_ty = hit_tiles[0]
+      left_tx = base_tx
+      right_tx = base_tx
+
+      # 左隣もはしごタイルなら左端を広げる
+      if left_tx - 1 >= 0 and pyxel.tilemaps[0].pget(left_tx - 1, base_ty) in self.STAIR_TILES:
+        left_tx -= 1
+      # 右隣もはしごタイルなら右端を広げる
+      if right_tx + 1 < 26 and pyxel.tilemaps[0].pget(right_tx + 1, base_ty) in self.STAIR_TILES:
+        right_tx += 1
+
+      # はしご全体の左端ピクセルと右端ピクセルの中間を計算し、1px左に補正
+      min_px = left_tx * 8
+      max_px = (right_tx + 1) * 8
       center_px = (min_px + max_px) / 2.0
-      return int(round(center_px - self.width / 2.0))
+      return int(round(center_px - self.width / 2.0)) - 1
+
     return self.x
 
   def update(self):
@@ -262,10 +287,13 @@ class App:
       self.debug_mode = not self.debug_mode
       pyxel.mouse(self.debug_mode)  # 調整モード中だけカーソル表示
 
-      if self.debug_mode:
-        pyxel.stop()  # 調整モードに入ったらBGM停止
-      else:
-        pyxel.playm(0, loop=True)  # 調整モードを抜けたらBGM再開
+      try:
+        if self.debug_mode:
+          pyxel.stop()  # 調整モードに入ったらBGM停止
+        else:
+          pyxel.playm(0, loop=True)  # 調整モードを抜けたらBGM再開
+      except Exception:
+        pass
 
     # --- 調整モード表示中のみマウス操作による数値調整を受け付ける ---
     if self.debug_mode:
@@ -273,35 +301,35 @@ class App:
       left_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT)
       right_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_RIGHT)
 
-      # ★ここを追加（パレット書き出しボタンのクリック判定）
+      # パレット書き出しボタンのクリック判定
       if left_clicked and (85 <= mx <= 133) and (84 <= my <= 94):
         self.export_palette_for_aseprite()
 
-      # ★元の `if left_clicked or right_clicked:` を `elif` に変更
-      elif left_clicked or right_clicked:
+      # 移動量テーブルの数値調整クリック判定
+      elif (left_clicked or right_clicked) and (85 <= mx <= 165) and (2 <= my <= 82):
         delta = 1 if left_clicked else -1
+        row_idx = (my - 2) // 10
+        if 0 <= row_idx < 8:
+          idx = (mx - 85) // 8
+          if 0 <= idx < 6:
+            target_tables = [
+                (self.up_main, "UP Main"),
+                (self.up_sub, "UP Sub"),
+                (self.down_main, "DOWN Main"),
+                (self.down_sub, "DOWN Sub"),
+                (self.left_main, "LEFT Main"),
+                (self.left_sub, "LEFT Sub"),
+                (self.right_main, "RIGHT Main"),
+                (self.right_sub, "RIGHT Sub"),
+            ]
+            t, name = target_tables[row_idx]
+            t[idx] += delta
+            print(f"Updated {name}: {t}")
 
-      if left_clicked or right_clicked:
-        delta = 1 if left_clicked else -1
-
-        if 85 <= mx <= 165:
-          row_idx = (my - 2) // 10
-          if 0 <= row_idx < 8:
-            idx = (mx - 85) // 8
-            if 0 <= idx < 6:
-              target_tables = [
-                  (self.up_main, "UP Main"),
-                  (self.up_sub, "UP Sub"),
-                  (self.down_main, "DOWN Main"),
-                  (self.down_sub, "DOWN Sub"),
-                  (self.left_main, "LEFT Main"),
-                  (self.left_sub, "LEFT Sub"),
-                  (self.right_main, "RIGHT Main"),
-                  (self.right_sub, "RIGHT Sub"),
-              ]
-              t, name = target_tables[row_idx]
-              t[idx] += delta
-              print(f"Updated {name}: {t}")
+      # それ以外の場所を左クリックしたら、その位置のタイルパターンを取得して記憶する
+      elif left_clicked:
+        self.clicked_tile = self.get_tile_at(mx, my)
+        self.clicked_pos = (int(mx // 8), int(my // 8))
 
     # --- 1. 消えるときの演出 (WARP_OUT) ---
     if self.state == "WARP_OUT":
@@ -471,10 +499,15 @@ class App:
       self.was_moving = self.moving
       self.moving = False
 
-      # 1. 現在「階段」に触れているか、または「足元2px下（床の1px上＋床自体）」に階段があるかチェック
+      # 1. 現在「階段」または「自由移動タイル (9,2)」に触れているかチェック
       body_on_stair = self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
       foot_on_stair = self.check_tile_collision(self.x, self.y + 2, self.STAIR_TILES)
       self.on_stair = body_on_stair or foot_on_stair
+
+      self.on_free_tile = (
+          self.check_tile_collision(self.x, self.y, self.FREE_MOVE_TILES)
+          or self.check_tile_collision(self.x, self.y + 2, self.FREE_MOVE_TILES)
+      )
 
       # 階段から完全に離れたら昇降モードを解除
       if not self.on_stair:
@@ -501,27 +534,64 @@ class App:
           or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
       )
 
-      # 階段にいないときは「上移動」を無効化
-      if not self.on_stair:
+      # キーを離したら末端ロックを解除する
+      if not is_up:
+        self.lock_stair_up = False
+      if not is_down:
+        self.lock_stair_dn = False
+
+      # 階段にも自由移動タイルにもいないとき、または登りきった直後は「上移動」を無効化
+      if (not self.on_stair and not self.on_free_tile) or self.lock_stair_up:
         is_up = False
 
-      # 階段に触れている状態で上下キーを押したら「昇降モード」に入り、中央へ位置合わせ
-      if self.on_stair and (is_up or is_down):
-        # ただし下キーのとき、すでに下の床に着地していて下にはしごがない場合は昇降しない
-        if is_down and not foot_on_stair and self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES):
-          self.climbing = False
-        else:
-          self.climbing = True
-          self.x = self.get_stair_center_x()
+      # 降りきった直後のロック中は「下移動」によるはしご再掴まりを無効化
+      if self.lock_stair_dn and not self.on_free_tile:
+        is_down = False
 
-      # 昇降モード中でも、上下キーを離して「左右キー」を押したときは、横が壁でなければいつでも抜けられるようにする
+      # 階段に触れている状態で上下キーを押したら「昇降モード」に入る（自由移動エリアからの乗り移りも許可）
+      if self.on_stair and (is_up or is_down):
+        cx1, cy1, cx2, cy2 = self.get_hitbox(self.x, self.y)
+
+        if is_up:
+          can_climb_up = False
+          for check_y in range(int(cy1), int(cy2) + 1, 4):
+            for check_x in range(int(cx1) + 4, int(cx2) - 3, 2):
+              if self.get_tile_at(check_x, check_y) in self.STAIR_TILES:
+                can_climb_up = True
+                break
+          if can_climb_up:
+            # まだ昇降モードに入っていなかった瞬間（掴まり始め）だけ中央にスナップさせる
+            if not self.climbing:
+              self.x = self.get_stair_center_x()
+            self.climbing = True
+
+        elif is_down and not self.on_free_tile:
+          can_climb_down = False
+          for check_y in [int(cy2) + 1, int(cy2) + 2, int(cy2) + 3]:
+            for check_x in range(int(cx1) + 1, int(cx2), 2):
+              if self.get_tile_at(check_x, check_y) in self.STAIR_TILES:
+                can_climb_down = True
+                break
+          if not can_climb_down:
+            for check_y in range(int(cy1), int(cy2) + 1, 4):
+              for check_x in range(int(cx1) + 1, int(cx2), 2):
+                if self.get_tile_at(check_x, check_y) in self.STAIR_TILES:
+                  can_climb_down = True
+                  break
+          if can_climb_down:
+            # まだ昇降モードに入っていなかった瞬間（降り始め）だけ中央にスナップさせる
+            if not self.climbing:
+              self.x = self.get_stair_center_x()
+            self.climbing = True
+
+      # 昇降モード中でも、上下キーを離して「左右キーだけ」を押したときは横が壁でなければ抜ける
       if self.climbing and not (is_up or is_down):
         if is_left and not self.check_tile_collision(self.x - 4, self.y, self.SOLID_TILES):
           self.climbing = False
         elif is_right and not self.check_tile_collision(self.x + 4, self.y, self.SOLID_TILES):
           self.climbing = False
 
-      # まだ昇降モード中の場合（上下キーを押している最中や、左右が壁で塞がれている場合）のみ左右をロック
+      # 昇降モード中の場合：左右キー入力はロックするが、X座標の上書きはしない（Subテーブルの横揺れを活かすため）
       if self.climbing:
         is_left = False
         is_right = False
@@ -567,12 +637,12 @@ class App:
           anim_idx = self.get_anim_index()
 
           dx, dy = 0, 0
-          if self.direction == "up" and self.climbing:
+          if self.direction == "up" and (self.climbing or self.on_free_tile):
             dy = -self.up_main[anim_idx]
-            dx = 0  # はしご中央を維持するため横ブレなし
-          elif self.direction == "down" and self.climbing:
+            dx = self.up_sub[anim_idx]   # ← はしご昇降中も UP-S の横揺れを適用
+          elif self.direction == "down" and (self.climbing or self.on_free_tile):
             dy = self.down_main[anim_idx]
-            dx = 0  # はしご中央を維持するため横ブレなし
+            dx = self.down_sub[anim_idx] # ← はしご昇降中も DN-S の横揺れを適用
           elif self.direction == "left" and not self.climbing:
             dx = -self.left_main[anim_idx]
             dy = self.left_sub[anim_idx]
@@ -580,10 +650,10 @@ class App:
             dx = self.right_main[anim_idx]
             dy = self.right_sub[anim_idx]
 
-          # X方向の移動と壁判定
+          # X方向の移動と壁判定（※はしご昇降中の横揺れは途中階の床に引っかからないよう許可）
           step_x = 1 if dx > 0 else -1
           for _ in range(abs(dx)):
-            if not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
+            if self.climbing or not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
               self.x += step_x
             else:
               break
@@ -592,8 +662,24 @@ class App:
           step_y = 1 if dy > 0 else -1
           for _ in range(abs(dy)):
             if self.climbing:
-              # 下に降りているとき：足元2px下（＝床の1px上）に「はしごではない床」があれば着地とみなして即解除
-              if step_y > 0:
+              # ① 上に登っているとき：はしごを登りきって上の床に乗ったら即停止＆ロック
+              if step_y < 0:
+                x1, _, x2, y2 = self.get_hitbox(self.x, self.y)
+                check_y = y2 + 2
+                foot_hits_solid = (
+                    self.get_tile_at(x1, check_y) in self.SOLID_TILES
+                    or self.get_tile_at(x2, check_y) in self.SOLID_TILES
+                    or self.get_tile_at((x1 + x2) // 2, check_y) in self.SOLID_TILES
+                )
+                body_still_stair = self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+                if not body_still_stair and foot_hits_solid:
+                  self.climbing = False
+                  self.lock_stair_up = True
+                  self.moving = False
+                  break
+
+              # ② 下に降りているとき：足元2px下に「はしごではない床」または「自由移動タイル」があれば着地＆解除
+              elif step_y > 0:
                 x1, _, x2, y2 = self.get_hitbox(self.x, self.y)
                 check_y = y2 + 2
                 foot_hits_solid = (
@@ -606,13 +692,29 @@ class App:
                     or self.get_tile_at(x2, check_y) in self.STAIR_TILES
                     or self.get_tile_at((x1 + x2) // 2, check_y) in self.STAIR_TILES
                 )
-                if foot_hits_solid and not foot_hits_stair:
+                foot_hits_free = (
+                    self.get_tile_at(x1, check_y) in self.FREE_MOVE_TILES
+                    or self.get_tile_at(x2, check_y) in self.FREE_MOVE_TILES
+                    or self.get_tile_at((x1 + x2) // 2, check_y) in self.FREE_MOVE_TILES
+                )
+                if (foot_hits_solid or foot_hits_free) and not foot_hits_stair:
                   self.climbing = False
+                  if foot_hits_solid:
+                    self.lock_stair_dn = True
+                    self.moving = False
                   break
 
               self.y += step_y
             else:
               if not self.check_tile_collision(self.x, self.y + step_y, self.SOLID_TILES):
+                # 自由移動タイル (9, 2) にいるとき、上に移動した先で自由移動タイルから完全にはみ出すなら止める（ぴょこぴょこ防止）
+                if self.on_free_tile and step_y < 0:
+                  next_on_free = (
+                      self.check_tile_collision(self.x, self.y + step_y, self.FREE_MOVE_TILES)
+                      or self.check_tile_collision(self.x, self.y + step_y + 2, self.FREE_MOVE_TILES)
+                  )
+                  if not next_on_free:
+                    break
                 self.y += step_y
               else:
                 break
@@ -646,15 +748,19 @@ class App:
             self.frame_x = 2
             self.frame_y = 1
 
-      # --- 3. 重力処理（階段に触れていないときのみ落下） ---
+      # --- 3. 重力処理（階段・自由移動タイルに触れていないときのみ落下） ---
       self.on_stair = (
           self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
           or self.check_tile_collision(self.x, self.y + 2, self.STAIR_TILES)
       )
+      self.on_free_tile = (
+          self.check_tile_collision(self.x, self.y, self.FREE_MOVE_TILES)
+          or self.check_tile_collision(self.x, self.y + 2, self.FREE_MOVE_TILES)
+      )
       if not self.on_stair:
         self.climbing = False
 
-      if self.on_stair:
+      if self.on_stair or self.on_free_tile:
         self.vy = 0.0
         self.on_ground = False
       else:
@@ -809,13 +915,48 @@ class App:
       if self.export_msg_timer > 0:
         pyxel.text(85, 97, "SAVED .gpl!", 11)
 
-      # --- ★ここから追加：足元のタイルIDと当たり判定枠の可視化 ---
+      # --- ★ここから追加：足元のタイルID・タイル絵柄プレビューと当たり判定枠の可視化 ---
       x1, y1, x2, y2 = self.get_hitbox(self.x, self.y)
       # 当たり判定の枠を赤い四角で表示
       pyxel.rectb(int(x1), int(y1), int(x2 - x1 + 1), int(y2 - y1 + 1), 8)
-      # 足元中央の1px下にあるタイルIDを取得して画面左上に表示
-      foot_tile = self.get_tile_at((x1 + x2) // 2, y2 + 1)
+      # 足元中央の2px下にあるタイルIDを取得して画面左上に表示
+      foot_tile = self.get_tile_at((x1 + x2) // 2, y2 + 2)
       pyxel.text(2, 2, f"FOOT:{foot_tile}", 10)
+      # FOOT表示のすぐ下に、いま踏んでいるタイルパターンをプレビュー描画
+      fu, fv = foot_tile
+      pyxel.blt(3, 10, 2, fu * 8, fv * 8, 8, 8, 0)
+      pyxel.rectb(2, 9, 10, 10, 10)
 
+      # --- ★ここから追加：はしご（STAIR_TILES）登録タイルのプレビュー表示 ---
+      pyxel.text(2, 22, "STAIRS:", 11)
+      # 重複を除いて順番を保ったタイル一覧を作成
+      unique_stairs = list(dict.fromkeys(self.STAIR_TILES))
+      for idx, (u_idx, v_idx) in enumerate(unique_stairs):
+        preview_x = 3 + (idx % 4) * 10   # 横に最大4個ずつ、10px間隔で並べる（右側のテーブルと重ならない幅）
+        preview_y = 30 + (idx // 4) * 10 # 4個を超えたら次の行へ折り返す
+        # タイル画像の該当箇所 (Bank 2) を 8x8 で描画
+        pyxel.blt(preview_x, preview_y, 2, u_idx * 8, v_idx * 8, 8, 8, 0)
+        # 見やすいように枠線を描画
+        pyxel.rectb(preview_x - 1, preview_y - 1, 10, 10, 7)
+
+      # --- ★追加：自由移動（FREE_MOVE_TILES）登録タイルのプレビュー表示 ---
+      pyxel.text(2, 54, "FREE:", 10)
+      unique_free = list(dict.fromkeys(self.FREE_MOVE_TILES))
+      for idx, (u_idx, v_idx) in enumerate(unique_free):
+        preview_x = 3 + (idx % 4) * 10
+        preview_y = 62 + (idx // 4) * 10
+        pyxel.blt(preview_x, preview_y, 2, u_idx * 8, v_idx * 8, 8, 8, 0)
+        pyxel.rectb(preview_x - 1, preview_y - 1, 10, 10, 7)
+
+      # --- ★追加：クリックした場所のタイルIDとプレビュー表示 ---
+      pyxel.text(2, 76, f"CLK:{self.clicked_tile}", 12)
+      cu, cv = self.clicked_tile
+      pyxel.blt(3, 84, 2, cu * 8, cv * 8, 8, 8, 0)
+      pyxel.rectb(2, 83, 10, 10, 12)
+
+      # マップ上のクリックしたマス目にも水色の枠線を表示
+      if self.clicked_pos is not None:
+        ctx, cty = self.clicked_pos
+        pyxel.rectb(ctx * 8, cty * 8, 8, 8, 12)
 
 App()
