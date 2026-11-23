@@ -840,7 +840,7 @@ class App:
       if is_left or is_right:
         self.stair_top_hold = False
 
-      if self.on_stair or self.on_free_tile or self.stair_top_hold:
+      if self.climbing or self.on_free_tile or self.stair_top_hold:
         self.vy = 0.0
         self.on_ground = True
       else:
