@@ -88,10 +88,35 @@ class App:
       pyxel.image(1).load(0, 0, "karakusa_32_DronF.png")
       pyxel.image(1).load(0, 64, "karakusa_32_Smoke.png")
 
-      # Bank 2: 背景画像
-      pyxel.image(2).load(0, 0, "BGtest001.png")
+      # Bank 2: タイルセット画像
+      pyxel.image(2).load(0, 0, "map_tileset.png")
+      # Tilemap 0: 配置データ (.tmx) を読み込み、画像バンク2番と紐付け
+      pyxel.tilemaps[0] = pyxel.Tilemap.from_tmx("map.tmx", 0)
+      pyxel.tilemaps[0].imgsrc = 2
     except Exception as e:
       print(f"画像ロードエラー: {e}")
+
+    # ==========================================================
+    # 【追加】タイル判定と重力の設定
+    # ==========================================================
+    # map_tileset.png 上のタイル座標 (横インデックス, 縦インデックス) ※0始まり
+    # 例: 左上から2番目なら (1, 0)、2段目の左端なら (0, 1)
+    # 床・壁のタイル定義
+    self.SOLID_TILES = [
+       (0, 2) 
+       ] 
+
+    # はしご（階段）のタイル定義
+    self.STAIR_TILES = [
+       (12, 1), (15, 1), (13, 1), (14, 1),(15, 1),(10, 1), (9, 2), (11, 1)
+    ]
+
+    # 重力設定
+    self.vy = 0.0          # 落下速度
+    self.gravity = 0.4     # 重力の強さ
+    self.max_fall_speed = 6.0  # 最大落下速度
+    self.on_ground = False # 接地フラグ
+    self.on_stair = False  # 階段接触フラグ
 
     pyxel.run(self.update, self.draw)
 
@@ -168,6 +193,34 @@ class App:
     idx = idx % 6
     self.frame_x = idx % 3
     self.frame_y = idx // 3
+
+  # --- 指定ピクセル座標にあるタイル種別を取得 ---
+  def get_tile_at(self, px, py):
+    tx = int(px // 8)
+    ty = int(py // 8)
+    if 0 <= tx < 26 and 0 <= ty < 26:  # 208 / 8 = 26マス
+      return pyxel.tilemaps[0].pget(tx, ty)
+    return (0, 0)
+
+  # --- プレイヤーの当たり判定枠（足元・胴体）を取得 ---
+  def get_hitbox(self, x, y):
+    # 32x32画像のうち、左右8px・上8pxを削り、下端を1px広げることで床の1px上に着地させる
+    return (x + 8, y + 8, x + self.width - 9, y + self.height)
+
+  # --- 指定座標で「床・壁」または「階段」に触れているか判定 ---
+  def check_tile_collision(self, x, y, target_tiles):
+    x1, y1, x2, y2 = self.get_hitbox(x, y)
+    # 判定枠の四隅と中間点を8px刻みでチェック
+    for check_y in range(int(y1), int(y2) + 1, 4):
+      for check_x in range(int(x1), int(x2) + 1, 4):
+        if self.get_tile_at(check_x, check_y) in target_tiles:
+          return True
+    # 右端・下端のラインも確実にチェック
+    for check_y in [int(y1), int(y2)]:
+      for check_x in [int(x1), int(x2)]:
+        if self.get_tile_at(check_x, check_y) in target_tiles:
+          return True
+    return False
 
   def update(self):
     # Qキーで終了
@@ -254,10 +307,18 @@ class App:
       ):
         max_x = max(0, 208 - self.width)
         max_y = max(0, 208 - self.height)
-        self.x = random.randint(0, max_x)
-        self.y = random.randint(0, max_y)
+
+        # 床に埋まらない安全な座標を最大100回まで抽選する
+        for _ in range(100):
+          cand_x = random.randint(0, max_x)
+          cand_y = random.randint(0, max_y)
+          if not self.check_tile_collision(cand_x, cand_y, self.SOLID_TILES):
+            self.x = cand_x
+            self.y = cand_y
+            break
 
         self.state = "WARP_IN"
+        self.vy = 0.0  # ← ★ここを追加
         self.dron_frame = float(self.max_dron_frame)
         self.dron_timer = 0
         self.smoke_frame = 0.0
@@ -388,6 +449,12 @@ class App:
       self.was_moving = self.moving
       self.moving = False
 
+      # 1. 現在「階段」に触れているか、または「足元1px下」に階段があるかチェック
+      self.on_stair = (
+          self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+          or self.check_tile_collision(self.x, self.y + 1, self.STAIR_TILES)
+      )
+
       is_up = (
           pyxel.btn(pyxel.KEY_UP)
           or pyxel.btn(pyxel.KEY_W)
@@ -409,6 +476,10 @@ class App:
           or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
       )
 
+      # 階段にいないときは「上移動」の入力を無効化（空中浮遊防止）
+      if not self.on_stair:
+        is_up = False
+
       new_direction = self.direction
       is_input = False
 
@@ -427,7 +498,7 @@ class App:
 
       if is_input:
         self.moving = True
-        self.skip_idle = False  # 移動を始めたらアイドルスキップを解除
+        self.skip_idle = False
         if new_direction != self.direction:
           self.direction = new_direction
           self.frame_x = 0
@@ -437,47 +508,62 @@ class App:
         self.moving = False
 
       if self.was_moving and not self.moving:
-        # 動きが止まった瞬間に停止アニメーション用変数をリセット
         self.frame_x = 0
         self.frame_y = 0
         self.anim_timer = 0
         self.idle_step_count = 0
 
+      # --- 2. キー入力による移動（1pxずつ判定して壁めり込み防止） ---
       if self.moving:
         self.anim_timer += 1
         if self.anim_timer >= self.anim_speed:
           self.anim_timer = 0
-
           anim_idx = self.get_anim_index()
 
-          # 主方向および副方向（サブのズレ）を同時に適用
-          if self.direction == "up":
-            self.y -= self.up_main[anim_idx]
-            self.x += self.up_sub[anim_idx]
+          dx, dy = 0, 0
+          if self.direction == "up" and self.on_stair:
+            dy = -self.up_main[anim_idx]
+            dx = self.up_sub[anim_idx]
           elif self.direction == "down":
-            self.y += self.down_main[anim_idx]
-            self.x += self.down_sub[anim_idx]
+            # 階段のときだけ下移動の移動量テーブルを適用（平地では重力に任せる）
+            if self.on_stair:
+              dy = self.down_main[anim_idx]
+              dx = self.down_sub[anim_idx]
           elif self.direction == "left":
-            self.x -= self.left_main[anim_idx]
-            self.y += self.left_sub[anim_idx]
+            dx = -self.left_main[anim_idx]
+            dy = self.left_sub[anim_idx]
           elif self.direction == "right":
-            self.x += self.right_main[anim_idx]
-            self.y += self.right_sub[anim_idx]
+            dx = self.right_main[anim_idx]
+            dy = self.right_sub[anim_idx]
+
+          # X方向の移動と壁判定（階段に触れている間は床・壁をすり抜ける）
+          step_x = 1 if dx > 0 else -1
+          for _ in range(abs(dx)):
+            if self.on_stair or not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
+              self.x += step_x
+            else:
+              break
+
+          # Y方向の移動と床・天井判定（階段に触れている間は床をすり抜ける）
+          step_y = 1 if dy > 0 else -1
+          for _ in range(abs(dy)):
+            if self.on_stair or not self.check_tile_collision(self.x, self.y + step_y, self.SOLID_TILES):
+              self.y += step_y
+            else:
+              break
 
           self.frame_x = (self.frame_x + 1) % 3
           if self.frame_x == 0:
             self.frame_y = 0 if self.frame_y == 1 else 1
       else:
-        # --- 停止中のアニメーション（停止パターン） ---
+        # 停止中のアニメーション
         if self.skip_idle:
-          # ドロン直後は前向きの停止パターン最終コマ（frame_x=2, frame_y=1）で固定
           self.frame_x = 2
           self.frame_y = 1
         else:
           current_idle_speed = (
               4 if self.direction in ["left", "right"] else self.anim_speed
           )
-
           if self.idle_step_count < 6:
             self.anim_timer += 1
             if self.anim_timer >= current_idle_speed:
@@ -495,6 +581,34 @@ class App:
             self.frame_x = 2
             self.frame_y = 1
 
+      # --- 3. 重力処理（階段に触れていないときのみ落下） ---
+      # 移動後に改めて階段接触を再チェック
+      self.on_stair = self.check_tile_collision(self.x, self.y, self.STAIR_TILES)
+
+      if self.on_stair:
+        self.vy = 0.0
+        self.on_ground = False
+      else:
+        # 階段から抜けた直後などに足元が少しだけ床に埋まっていたら上に押し出す（最大8pxまで救済）
+        if self.check_tile_collision(self.x, self.y, self.SOLID_TILES):
+          for lift in range(1, 9):
+            if not self.check_tile_collision(self.x, self.y - lift, self.SOLID_TILES):
+              self.y -= lift
+              break
+
+        self.vy = min(self.vy + self.gravity, self.max_fall_speed)
+        fall_pixels = int(self.vy)
+        self.on_ground = False
+
+        for _ in range(fall_pixels):
+          # 1px下に床があるか、または画面最下部に到達したか
+          if self.y + 1 > 208 - self.height or self.check_tile_collision(self.x, self.y + 1, self.SOLID_TILES):
+            self.vy = 0.0
+            self.on_ground = True
+            break
+          else:
+            self.y += 1
+
     # 画面外に出ないように制限
     self.x = max(0, min(self.x, 208 - self.width))
     self.y = max(0, min(self.y, 208 - self.height))
@@ -503,8 +617,8 @@ class App:
     # 画面クリア（色番号 1: 暗い青紫）
     pyxel.cls(1)
 
-    # 背景画像（Bank 2）を画面全体に描画
-    pyxel.blt(0, 0, 2, 0, 0, 208, 208)
+    # タイルマップ（Tilemap 0）を画面全体に描画
+    pyxel.bltm(0, 0, 0, 0, 0, 208, 208)
 
     # --- 状態に応じた描画 ---
     if self.state == "WARP_OUT":
@@ -626,6 +740,14 @@ class App:
       # 書き出し完了メッセージ
       if self.export_msg_timer > 0:
         pyxel.text(85, 97, "SAVED .gpl!", 11)
+
+      # --- ★ここから追加：足元のタイルIDと当たり判定枠の可視化 ---
+      x1, y1, x2, y2 = self.get_hitbox(self.x, self.y)
+      # 当たり判定の枠を赤い四角で表示
+      pyxel.rectb(int(x1), int(y1), int(x2 - x1 + 1), int(y2 - y1 + 1), 8)
+      # 足元中央の1px下にあるタイルIDを取得して画面左上に表示
+      foot_tile = self.get_tile_at((x1 + x2) // 2, y2 + 1)
+      pyxel.text(2, 2, f"FOOT:{foot_tile}", 10)
 
 
 App()
