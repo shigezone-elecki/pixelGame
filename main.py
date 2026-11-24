@@ -75,13 +75,11 @@ class App:
       # Bank 0: 歩行グラフィック（左側：x=0）
       pyxel.image(0).load(0, 0, "karakusa_32_F.png")
       pyxel.image(0).load(0, 64, "karakusa_32_B.png")
-      pyxel.image(0).load(0, 128, "karakusa_32_L.png")
       pyxel.image(0).load(0, 192, "karakusa_32_R.png")
 
       # Bank 0: 各方向の停止・アイドルグラフィック（右側：x=96）
       pyxel.image(0).load(96, 0, "karakusa_32_Fstp.png")
       pyxel.image(0).load(96, 64, "karakusa_32_Bstp.png")
-      pyxel.image(0).load(96, 128, "karakusa_32_Lstp.png")
       pyxel.image(0).load(96, 192, "karakusa_32_Rstp.png")
 
       # Bank 1: エフェクト用（縦2段のスプライトシート）
@@ -939,12 +937,14 @@ class App:
       else:
         u_base = 96  # 停止・アイドルシートは右側 (x=96)
 
+      draw_w = self.width
       if self.direction == "down":
         v_base = 0
       elif self.direction == "up":
         v_base = 64
       elif self.direction == "left":
-        v_base = 128
+        v_base = 192          # 右向き画像(y=192)を参照
+        draw_w = -self.width  # 幅をマイナスにして左右反転描画
       elif self.direction == "right":
         v_base = 192
 
@@ -953,11 +953,11 @@ class App:
 
       pyxel.blt(
           int(self.x),
-         int(self.y),
+          int(self.y),
           0,
           u,
           v,
-          self.width,
+          draw_w,
           self.height,
           0,
       )
