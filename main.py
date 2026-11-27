@@ -29,8 +29,10 @@ class App:
 
     # 調整モードの表示フラグ（初期値は非表示）
     self.debug_mode = False
+    self.debug_jump_mode = False  # ← ★追加：デバッグ中のテーブル表示切替（False:歩行, True:ジャンプ）
     # パレット書き出し完了メッセージの表示タイマー  <-- ★ここを追加
     self.export_msg_timer = 0
+    self.copy_msg_timer = 0  # ← ★追加：テーブルコピー完了メッセージ表示タイマー
 
     # ドロン直後のアイドルアニメーションスキップ用フラグ
     self.skip_idle = False
@@ -75,6 +77,7 @@ class App:
       # Bank 0: 歩行グラフィック（左側：x=0）
       pyxel.image(0).load(0, 0, "karakusa_32_F.png")
       pyxel.image(0).load(0, 64, "karakusa_32_B.png")
+      pyxel.image(0).load(0, 128, "karakusa_32_Jmp.png") # ← ★追加：ジャンプ画像（256x64）
       pyxel.image(0).load(0, 192, "karakusa_32_R.png")
 
       # Bank 0: 各方向の停止・アイドルグラフィック（右側：x=96）
@@ -131,6 +134,21 @@ class App:
     self.clicked_tile = (0, 0) # ← ★追加：クリックした場所のタイルID (u, v)
     self.clicked_pos = None    # ← ★追加：クリックしたマップ上のマス座標 (tx, ty)
 
+    # --- ★追加：ジャンプ用の状態管理（14コマ固定軌道テーブル方式） ---
+    self.is_jumping = False    # ジャンプ一連動作中フラグ (0〜13コマ)
+    self.jump_frame = 0        # ジャンプの現在コマ (0 〜 13)
+    self.jump_timer = 0        # ジャンプのコマ送りタイマー
+    self.jump_speed = 3        # ジャンプのコマ送り速度（フレーム数）
+    self.jump_dir = 1          # 1: 右向きジャンプ, -1: 左向きジャンプ
+    self.jump_origin_x = 0     # ← ★追加：デバッグ時のジャンプ開始基準X座標
+    self.jump_origin_y = 0     # ← ★追加：デバッグ時のジャンプ開始基準Y座標
+
+    # 14コマそれぞれの移動量 (0〜3:踏ん張り, 4〜7:空中移動, 8〜13:着地硬直)
+    # ※数値はデバッグしながらお好みで微調整できます
+    # --- ジャンプ移動量テーブル ---
+    self.jump_dx = [0, 0, 0, 11, 8, 11, 4, 5, 7, 4, 1, 2, 2, 4]
+    self.jump_dy = [0, 0, 0, 0, -11, -4, 4, 11, 0, 0, 0, 0, 0, 0]
+
     pyxel.run(self.update, self.draw)
 
   # --- 現在のパレットをAseprite用(.gpl)に書き出すヘルパー関数 ---
@@ -174,6 +192,51 @@ class App:
       self.export_msg_timer = 120
     except Exception as e:
       print(f"パレット書き出しエラー: {e}")
+
+  # --- 現在の移動量テーブル定義コードをクリップボードにコピーするヘルパー関数 ---
+  def copy_tables_to_clipboard(self):
+    code_text = (
+        f"    # --- UP 時 ---\n"
+        f"    self.up_main = list({tuple(self.up_main)})\n"
+        f"    self.up_sub = list({tuple(self.up_sub)})\n"
+        f"    # --- DOWN 時 ---\n"
+        f"    self.down_main = list({tuple(self.down_main)})\n"
+        f"    self.down_sub = list({tuple(self.down_sub)})\n"
+        f"    # --- LEFT 時 ---\n"
+        f"    self.left_main = list({tuple(self.left_main)})\n"
+        f"    self.left_sub = list({tuple(self.left_sub)})\n"
+        f"    # --- RIGHT 時 ---\n"
+        f"    self.right_main = list({tuple(self.right_main)})\n"
+        f"    self.right_sub = list({tuple(self.right_sub)})\n\n"
+        f"    # --- ジャンプ移動量テーブル ---\n"
+        f"    self.jump_dx = {self.jump_dx}\n"
+        f"    self.jump_dy = {self.jump_dy}\n"
+    )
+
+    print("=== 移動量テーブル定義コード ===")
+    print(code_text)
+
+    # 1. Webブラウザ環境（Pyodide）の場合
+    try:
+      import js  # type: ignore
+      js.navigator.clipboard.writeText(code_text)
+      self.copy_msg_timer = 120
+      return
+    except Exception:
+      pass
+
+    # 2. PC環境（tkinter または OS標準コマンドでクリップボードへコピー）
+    try:
+      import tkinter as tk
+      root = tk.Tk()
+      root.withdraw()
+      root.clipboard_clear()
+      root.clipboard_append(code_text)
+      root.update()
+      root.destroy()
+      self.copy_msg_timer = 120
+    except Exception as e:
+      print(f"クリップボードコピーエラー: {e}")
 
   # --- 縦2段（1行8個）のシートから正しい (u, v) を計算するヘルパー関数 ---
   def get_effect_uv(self, frame_idx):
@@ -282,6 +345,8 @@ class App:
     # ★ここを追加（メッセージ表示タイマーを減らす）
     if self.export_msg_timer > 0:
       self.export_msg_timer -= 1
+    if self.copy_msg_timer > 0:
+      self.copy_msg_timer -= 1
 
     # --- セレクトボタン（押し始め）で調整モードの表示・非表示をトグル ---
     if (
@@ -306,30 +371,69 @@ class App:
       left_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT)
       right_clicked = pyxel.btnp(pyxel.MOUSE_BUTTON_RIGHT)
 
-      # パレット書き出しボタンのクリック判定
-      if left_clicked and (85 <= mx <= 133) and (84 <= my <= 94):
+      # パレット書き出しボタン (EXP PAL) のクリック判定
+      if left_clicked and (85 <= mx <= 125) and (84 <= my <= 94):
         self.export_palette_for_aseprite()
 
+      # ジャンプテーブル切り替えボタン (JMP TBL / WLK TBL) のクリック判定
+      elif left_clicked and (128 <= mx <= 172) and (84 <= my <= 94):
+        self.debug_jump_mode = not self.debug_jump_mode
+        if self.debug_jump_mode:
+          self.jump_frame = 0
+          self.jump_origin_x = self.x
+          self.jump_origin_y = self.y
+          if self.direction not in ["left", "right"]:
+            self.direction = "right"
+
+      # ★追加：移動量テーブルコードのクリップボードコピーボタン (CPY TBL) のクリック判定
+      elif left_clicked and (175 <= mx <= 207) and (84 <= my <= 94):
+        self.copy_tables_to_clipboard()
+
       # 移動量テーブルの数値調整クリック判定
-      elif (left_clicked or right_clicked) and (85 <= mx <= 165) and (2 <= my <= 82):
+      elif (left_clicked or right_clicked) and (50 <= mx <= 195) and (2 <= my <= 82):
         delta = 1 if left_clicked else -1
-        row_idx = (my - 2) // 10
-        if 0 <= row_idx < 8:
-          idx = (mx - 85) // 8
-          if 0 <= idx < 6:
-            target_tables = [
-                (self.up_main, "UP Main"),
-                (self.up_sub, "UP Sub"),
-                (self.down_main, "DOWN Main"),
-                (self.down_sub, "DOWN Sub"),
-                (self.left_main, "LEFT Main"),
-                (self.left_sub, "LEFT Sub"),
-                (self.right_main, "RIGHT Main"),
-                (self.right_sub, "RIGHT Sub"),
-            ]
-            t, name = target_tables[row_idx]
-            t[idx] += delta
-            print(f"Updated {name}: {t}")
+
+        # 【ジャンプテーブル表示中】のクリック調整（7コマずつ2段構成）
+        if self.debug_jump_mode:
+          row_idx = (my - 2) // 10
+          # row 0: JMP-X(0〜6), row 1: JMP-Y(0〜6), row 3: JMP-X(7〜13), row 4: JMP-Y(7〜13)
+          if row_idx in (0, 1, 3, 4):
+            col_idx = (mx - 76) // 16
+            if 0 <= col_idx < 7:
+              frame_idx = col_idx if row_idx in (0, 1) else col_idx + 7
+              if row_idx in (0, 3):
+                self.jump_dx[frame_idx] += delta
+                print(f"Updated jump_dx[{frame_idx}]: {self.jump_dx}")
+              else:
+                self.jump_dy[frame_idx] += delta
+                print(f"Updated jump_dy[{frame_idx}]: {self.jump_dy}")
+
+              # ★追加：いじったコマ(frame_idx)にキャラクターの表示コマも合わせ、基準位置からの移動を即座に反映！
+              self.jump_frame = frame_idx
+              dir_sign = -1 if self.direction == "left" else 1
+              self.x = self.jump_origin_x + sum(self.jump_dx[:self.jump_frame + 1]) * dir_sign
+              self.y = self.jump_origin_y + sum(self.jump_dy[:self.jump_frame + 1])
+
+        # 【通常歩行テーブル表示中】のクリック調整
+        else:
+          if 85 <= mx <= 165:
+            row_idx = (my - 2) // 10
+            if 0 <= row_idx < 8:
+              idx = (mx - 85) // 8
+              if 0 <= idx < 6:
+                target_tables = [
+                    (self.up_main, "UP Main"),
+                    (self.up_sub, "UP Sub"),
+                    (self.down_main, "DOWN Main"),
+                    (self.down_sub, "DOWN Sub"),
+                    (self.left_main, "LEFT Main"),
+                    (self.left_sub, "LEFT Sub"),
+                    (self.right_main, "RIGHT Main"),
+                    (self.right_sub, "RIGHT Sub"),
+                ]
+                t, name = target_tables[row_idx]
+                t[idx] += delta
+                print(f"Updated {name}: {t}")
 
       # それ以外の場所を左クリックしたら、その位置のタイルパターンを取得して記憶する
       elif left_clicked:
@@ -465,44 +569,158 @@ class App:
       step_prev = pyxel.btnp(pyxel.GAMEPAD1_BUTTON_Y) or pyxel.btnp(pyxel.KEY_Z)
 
       if step_next:
-        anim_idx = self.get_anim_index()
-        # 現在のコマの移動量を適用して1コマ進める
-        if self.direction == "up":
-          self.y -= self.up_main[anim_idx]
-          self.x += self.up_sub[anim_idx]
-        elif self.direction == "down":
-          self.y += self.down_main[anim_idx]
-          self.x += self.down_sub[anim_idx]
-        elif self.direction == "left":
-          self.x -= self.left_main[anim_idx]
-          self.y += self.left_sub[anim_idx]
-        elif self.direction == "right":
-          self.x += self.right_main[anim_idx]
-          self.y += self.right_sub[anim_idx]
-        self.set_anim_index(anim_idx + 1)
+        if self.debug_jump_mode:
+          self.jump_frame = (self.jump_frame + 1) % 14
+          dir_sign = -1 if self.direction == "left" else 1
+          self.x = self.jump_origin_x + sum(self.jump_dx[:self.jump_frame + 1]) * dir_sign
+          self.y = self.jump_origin_y + sum(self.jump_dy[:self.jump_frame + 1])
+        else:
+          anim_idx = self.get_anim_index()
+          if self.direction == "up":
+            self.y -= self.up_main[anim_idx]
+            self.x += self.up_sub[anim_idx]
+          elif self.direction == "down":
+            self.y += self.down_main[anim_idx]
+            self.x += self.down_sub[anim_idx]
+          elif self.direction == "left":
+            self.x -= self.left_main[anim_idx]
+            self.y += self.left_sub[anim_idx]
+          elif self.direction == "right":
+            self.x += self.right_main[anim_idx]
+            self.y += self.right_sub[anim_idx]
+          self.set_anim_index(anim_idx + 1)
 
       elif step_prev:
-        # 1コマ戻してから、そのコマの移動量を逆方向に引き戻す
-        prev_idx = (self.get_anim_index() - 1) % 6
-        self.set_anim_index(prev_idx)
-        if self.direction == "up":
-          self.y += self.up_main[prev_idx]
-          self.x -= self.up_sub[prev_idx]
-        elif self.direction == "down":
-          self.y -= self.down_main[prev_idx]
-          self.x -= self.down_sub[prev_idx]
-        elif self.direction == "left":
-          self.x += self.left_main[prev_idx]
-          self.y -= self.left_sub[prev_idx]
-        elif self.direction == "right":
-          self.x -= self.right_main[prev_idx]
-          self.y -= self.right_sub[prev_idx]
+        if self.debug_jump_mode:
+          self.jump_frame = (self.jump_frame - 1) % 14
+          dir_sign = -1 if self.direction == "left" else 1
+          self.x = self.jump_origin_x + sum(self.jump_dx[:self.jump_frame + 1]) * dir_sign
+          self.y = self.jump_origin_y + sum(self.jump_dy[:self.jump_frame + 1])
+        else:
+          prev_idx = (self.get_anim_index() - 1) % 6
+          self.set_anim_index(prev_idx)
+          if self.direction == "up":
+            self.y += self.up_main[prev_idx]
+            self.x -= self.up_sub[prev_idx]
+          elif self.direction == "down":
+            self.y -= self.down_main[prev_idx]
+            self.x -= self.down_sub[prev_idx]
+          elif self.direction == "left":
+            self.x += self.left_main[prev_idx]
+            self.y -= self.left_sub[prev_idx]
+          elif self.direction == "right":
+            self.x -= self.right_main[prev_idx]
+            self.y -= self.right_sub[prev_idx]
+
     # ==========================================================
     # 【通常モード中】：これまでの連続移動処理
     # ==========================================================
     else:
       self.was_moving = self.moving
       self.moving = False
+
+      # --- ★追加：ジャンプ中の14コマ軌道＆アニメーション処理 ---
+      if self.is_jumping:
+        # 9コマ目以降（index 8〜13の着地モーション中）にジャンプキーが押されたら連続ジャンプを受け付ける
+        is_jump_btn = pyxel.btnp(pyxel.KEY_Z) or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B)
+        if is_jump_btn and self.jump_frame >= 8:
+          on_floor = (
+              (self.y + 2 > 208 - self.height)
+              or self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES)
+              or self.check_tile_collision(self.x, self.y, self.FREE_MOVE_TILES)
+          )
+          if on_floor:
+            self.jump_frame = 0
+            self.jump_timer = 0
+            # 連続ジャンプ時に左右キーが押されていれば向きも切り替えられるようにする
+            if pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT):
+              self.direction = "left"
+              self.jump_dir = -1
+            elif pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT):
+              self.direction = "right"
+              self.jump_dir = 1
+            try:
+              pyxel.play(0, 0)
+            except Exception:
+              pass
+            return
+
+        self.jump_timer += 1
+        if self.jump_timer >= self.jump_speed:
+          self.jump_timer = 0
+          self.jump_frame += 1
+
+          # 14コマ目(index 13)まで再生し終わったらジャンプ終了
+          if self.jump_frame >= 14:
+            self.is_jumping = False
+            self.jump_frame = 0
+            self.skip_idle = True
+            return
+
+          # 現在のコマの移動量を取得
+          dx = self.jump_dx[self.jump_frame] * self.jump_dir
+          dy = self.jump_dy[self.jump_frame]
+
+          # X方向の移動（壁にぶつかったらそこで止まる）
+          if dx != 0:
+            step_x = 1 if dx > 0 else -1
+            for _ in range(abs(dx)):
+              if not self.check_tile_collision(self.x + step_x, self.y, self.SOLID_TILES):
+                self.x += step_x
+              else:
+                break
+
+          # Y方向の移動（上昇時は天井、下降時は床・自由移動エリアの着地判定）
+          if dy < 0:
+            for _ in range(abs(dy)):
+              if self.y - 1 >= 0 and not self.check_tile_collision(self.x, self.y - 1, self.SOLID_TILES):
+                self.y -= 1
+              else:
+                break
+          elif dy > 0:
+            for _ in range(abs(dy)):
+              hit_solid = (self.y + 2 > 208 - self.height) or self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES)
+              # 自由移動エリアから跳んだ場合、元の高さ（足元が自由移動エリアに接地する位置）で着地
+              hit_free = self.check_tile_collision(self.x, self.y + 1, self.FREE_MOVE_TILES) and self.jump_frame >= 7
+              if hit_solid or hit_free:
+                # 地面に着地したら、即座に8コマ目（着地ショック吸収ポーズ）へ移行
+                if self.jump_frame < 8:
+                  self.jump_frame = 8
+                break
+              else:
+                self.y += 1
+
+          # 8コマ目(index 7)が終わった時点でまだ空中にいる場合（段差から飛び降りたときなど）は落下させる
+          if self.jump_frame >= 8:
+            on_floor = (self.y + 2 > 208 - self.height) or self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES) or self.check_tile_collision(self.x, self.y, self.FREE_MOVE_TILES)
+            if not on_floor:
+              # 地面に着くまで7コマ目（下降ポーズ）のまま真下へ落下する
+              self.jump_frame = 7
+              self.y += 4
+
+        # ジャンプ中は画面端制限だけかけて通常歩行・重力をスキップ
+        self.x = max(0, min(self.x, 208 - self.width))
+        self.y = max(0, min(self.y, 208 - self.height))
+        return
+
+      # --- ★追加：ジャンプ開始トリガー（Zキー / ゲームパッドBボタン） ---
+      is_jump_btn = pyxel.btnp(pyxel.KEY_Z) or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B)
+      if is_jump_btn and (self.on_ground or self.on_free_tile or self.stair_top_hold) and not self.climbing:
+        self.is_jumping = True
+        self.jump_frame = 0  # 0コマ目（踏ん張り1コマ目）からスタート
+        self.jump_timer = 0
+        self.stair_top_hold = False
+        # 現在の向きに応じてジャンプ方向を決定（上下を向いている場合は右向き基準）
+        if self.direction == "left":
+          self.jump_dir = -1
+        else:
+          self.direction = "right"
+          self.jump_dir = 1
+        try:
+          pyxel.play(0, 0)
+        except Exception:
+          pass
+        return
 
       # 1. 現在「階段」または「自由移動タイル (9,2)」に触れているかチェック（端4pxのカスりを除外し、登れる範囲と一致させる）
       sx1, sy1, sx2, sy2 = self.get_hitbox(self.x, self.y)
@@ -844,21 +1062,16 @@ class App:
       else:
         # 階段から抜けた直後などに床や天井に埋まっていたら、近い方向（上または下）へ最大24pxまで押し出して救出する
         if self.check_tile_collision(self.x, self.y, self.SOLID_TILES):
-          # 上方向に何px動けば抜けられるか計測
           up_dist = None
           for lift in range(1, 25):
             if not self.check_tile_collision(self.x, self.y - lift, self.SOLID_TILES):
               up_dist = lift
               break
-
-          # 下方向に何px動けば抜けられるか計測
           down_dist = None
           for push_down in range(1, 25):
             if not self.check_tile_collision(self.x, self.y + push_down, self.SOLID_TILES):
               down_dist = push_down
               break
-
-          # 距離が近い方（めり込みが浅い方）へ押し出して確実に脱出させる
           if up_dist is not None and (down_dist is None or up_dist <= down_dist):
             self.y -= up_dist
           elif down_dist is not None:
@@ -929,27 +1142,29 @@ class App:
 
     # --- 通常時（WARP_OUT および WARP_IN の間はプレイヤーを描画しないように分離） ---
     elif self.state == "NORMAL":
-      u_base = 0
-      v_base = 0
+      draw_w = -self.width if self.direction == "left" else self.width
 
-      if self.moving or self.debug_mode:
-        u_base = 0  # 歩行シートは左側 (x=0)
+      # ジャンプ中、またはデバッグのジャンプ調整モード中は (0, 128) の14コマシートを描画
+      if (self.is_jumping and not self.debug_mode) or (self.debug_mode and self.debug_jump_mode):
+        if self.jump_frame < 8:
+          u = (self.jump_frame % 8) * self.width
+          v = 128
+        else:
+          u = ((self.jump_frame - 8) % 8) * self.width
+          v = 160
       else:
-        u_base = 96  # 停止・アイドルシートは右側 (x=96)
+        u_base = 0 if (self.moving or self.debug_mode) else 96
+        if self.direction == "down":
+          v_base = 0
+        elif self.direction == "up":
+          v_base = 64
+        elif self.direction == "left":
+          v_base = 192
+        elif self.direction == "right":
+          v_base = 192
 
-      draw_w = self.width
-      if self.direction == "down":
-        v_base = 0
-      elif self.direction == "up":
-        v_base = 64
-      elif self.direction == "left":
-        v_base = 192          # 右向き画像(y=192)を参照
-        draw_w = -self.width  # 幅をマイナスにして左右反転描画
-      elif self.direction == "right":
-        v_base = 192
-
-      u = u_base + (self.frame_x * self.width)
-      v = v_base + (self.frame_y * self.height)
+        u = u_base + (self.frame_x * self.width)
+        v = v_base + (self.frame_y * self.height)
 
       pyxel.blt(
           int(self.x),
@@ -964,51 +1179,93 @@ class App:
 
     # --- 調整モードが有効（True）のときだけ、画面右上に移動量テーブルを表示 ---
     if self.debug_mode:
-      anim_idx = self.get_anim_index()
+      if self.debug_jump_mode:
+        # 【ジャンプ移動量テーブル表示（前半0〜6コマ / 後半7〜13コマの2段表示）】
+        pyxel.text(50, 2,  "JX0-6:", 11)
+        pyxel.text(50, 12, "JY0-6:", 11)
+        pyxel.text(50, 22, f"FRAME: {self.jump_frame:2d} / 13", 10)
+        pyxel.text(50, 32, "JX7-D:", 11)
+        pyxel.text(50, 42, "JY7-D:", 11)
 
-      display_tables = [
-          ("UP-M:", self.up_main, "up"),
-          ("UP-S:", self.up_sub, "up"),
-          ("DN-M:", self.down_main, "down"),
-          ("DN-S:", self.down_sub, "down"),
-          ("LT-M:", self.left_main, "left"),
-          ("LT-S:", self.left_sub, "left"),
-          ("RT-M:", self.right_main, "right"),
-          ("RT-S:", self.right_sub, "right"),
-      ]
+        for col in range(7):
+          x_pos = 78 + col * 16
+          # 前半 (0〜6)
+          col_top = 8 if self.jump_frame == col else 7
+          pyxel.text(x_pos, 2,  f"{self.jump_dx[col]:>2}", col_top)
+          pyxel.text(x_pos, 12, f"{self.jump_dy[col]:>2}", col_top)
+          # 後半 (7〜13)
+          idx_btm = col + 7
+          col_btm = 8 if self.jump_frame == idx_btm else 7
+          pyxel.text(x_pos, 32, f"{self.jump_dx[idx_btm]:>2}", col_btm)
+          pyxel.text(x_pos, 42, f"{self.jump_dy[idx_btm]:>2}", col_btm)
+      else:
+        # 【通常歩行移動量テーブル表示】
+        anim_idx = self.get_anim_index()
 
-      start_y = 2
-      for label, table, dir_name in display_tables:
-        is_active_dir = self.direction == dir_name
-        row_col = 8 if is_active_dir else 7
+        display_tables = [
+            ("UP-M:", self.up_main, "up"),
+            ("UP-S:", self.up_sub, "up"),
+            ("DN-M:", self.down_main, "down"),
+            ("DN-S:", self.down_sub, "down"),
+            ("LT-M:", self.left_main, "left"),
+            ("LT-S:", self.left_sub, "left"),
+            ("RT-M:", self.right_main, "right"),
+            ("RT-S:", self.right_sub, "right"),
+        ]
 
-        # ラベルを描画
-        pyxel.text(50, start_y, label, row_col)
+        start_y = 2
+        for label, table, dir_name in display_tables:
+          is_active_dir = self.direction == dir_name
+          row_col = 8 if is_active_dir else 7
 
-        # 6コマ分の数字を 8px 間隔で描画（開始位置 x = 85）
-        x_offset = 85
-        for i in range(6):
-          num_col = 8 if (is_active_dir and i == anim_idx) else 7
-          pyxel.text(x_offset, start_y, str(table[i]), num_col)
-          x_offset += 8
+          pyxel.text(50, start_y, label, row_col)
 
-        pyxel.text(x_offset, start_y, "]", row_col)
+          x_offset = 85
+          for i in range(6):
+            num_col = 8 if (is_active_dir and i == anim_idx) else 7
+            pyxel.text(x_offset, start_y, str(table[i]), num_col)
+            x_offset += 8
 
-        start_y += 10
+          pyxel.text(x_offset, start_y, "]", row_col)
+          start_y += 10
 
-      # --- ★ここから下を追加：パレット書き出しボタンの描画 ---
-      btn_x, btn_y, btn_w, btn_h = 85, 84, 48, 10
+      # --- パレット書き出しボタン (EXP PAL) ---
+      btn_x, btn_y, btn_w, btn_h = 85, 84, 40, 10
       is_hover = (btn_x <= pyxel.mouse_x <= btn_x + btn_w) and (
           btn_y <= pyxel.mouse_y <= btn_y + btn_h
       )
       btn_bg = 11 if is_hover else 1
       pyxel.rect(btn_x, btn_y, btn_w, btn_h, btn_bg)
       pyxel.rectb(btn_x, btn_y, btn_w, btn_h, 7)
-      pyxel.text(btn_x + 4, btn_y + 2, "EXP PAL", 7)
+      pyxel.text(btn_x + 6, btn_y + 2, "EXP PAL", 7)
 
-      # 書き出し完了メッセージ
+      # --- ★追加：ジャンプ／歩行テーブル切り替えボタン (JMP TBL / WLK TBL) ---
+      jbtn_x, jbtn_y, jbtn_w, jbtn_h = 128, 84, 44, 10
+      is_jhover = (jbtn_x <= pyxel.mouse_x <= jbtn_x + jbtn_w) and (
+          jbtn_y <= pyxel.mouse_y <= jbtn_y + jbtn_h
+      )
+      jbtn_bg = 10 if self.debug_jump_mode else (11 if is_jhover else 1)
+      jbtn_txt_col = 0 if self.debug_jump_mode else 7
+      jbtn_label = "WLK TBL" if self.debug_jump_mode else "JMP TBL"
+      pyxel.rect(jbtn_x, jbtn_y, jbtn_w, jbtn_h, jbtn_bg)
+      pyxel.rectb(jbtn_x, jbtn_y, jbtn_w, jbtn_h, 7)
+      pyxel.text(jbtn_x + 8, jbtn_y + 2, jbtn_label, jbtn_txt_col)
+
+      # --- ★追加：移動テーブルコードコピーボタン (CPY TBL) ---
+      cbtn_x, cbtn_y, cbtn_w, cbtn_h = 175, 84, 32, 10
+      is_chover = (cbtn_x <= pyxel.mouse_x <= cbtn_x + cbtn_w) and (
+          cbtn_y <= pyxel.mouse_y <= cbtn_y + cbtn_h
+      )
+      cbtn_bg = 11 if is_chover else 1
+      pyxel.rect(cbtn_x, cbtn_y, cbtn_w, cbtn_h, cbtn_bg)
+      pyxel.rectb(cbtn_x, cbtn_y, cbtn_w, cbtn_h, 7)
+      pyxel.text(cbtn_x + 3, cbtn_y + 2, "CPY TBL", 7)
+
+      # 書き出し・コピー完了メッセージ
       if self.export_msg_timer > 0:
         pyxel.text(85, 97, "SAVED .gpl!", 11)
+      if self.copy_msg_timer > 0:
+        pyxel.text(140, 97, "COPIED TBL!", 10)
 
       # --- ★ここから追加：足元のタイルID・タイル絵柄プレビューと当たり判定枠の可視化 ---
       x1, y1, x2, y2 = self.get_hitbox(self.x, self.y)
