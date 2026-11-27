@@ -621,29 +621,42 @@ class App:
 
       # --- ★追加：ジャンプ中の14コマ軌道＆アニメーション処理 ---
       if self.is_jumping:
-        # 9コマ目以降（index 8〜13の着地モーション中）にジャンプキーが押されたら連続ジャンプを受け付ける
         is_jump_btn = pyxel.btnp(pyxel.KEY_Z) or pyxel.btnp(pyxel.GAMEPAD1_BUTTON_B)
-        if is_jump_btn and self.jump_frame >= 8:
+        any_dir_btn = (
+            pyxel.btn(pyxel.KEY_UP) or pyxel.btn(pyxel.KEY_W) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_UP)
+            or pyxel.btn(pyxel.KEY_DOWN) or pyxel.btn(pyxel.KEY_S) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_DOWN)
+            or pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT)
+            or pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
+        )
+
+        # 9コマ目以降（index 8〜13の着地モーション中）で地面に着いているとき
+        if self.jump_frame >= 8:
           on_floor = (
               (self.y + 2 > 208 - self.height)
               or self.check_tile_collision(self.x, self.y + 2, self.SOLID_TILES)
               or self.check_tile_collision(self.x, self.y, self.FREE_MOVE_TILES)
           )
           if on_floor:
-            self.jump_frame = 0
-            self.jump_timer = 0
-            # 連続ジャンプ時に左右キーが押されていれば向きも切り替えられるようにする
-            if pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT):
-              self.direction = "left"
-              self.jump_dir = -1
-            elif pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT):
-              self.direction = "right"
-              self.jump_dir = 1
-            try:
-              pyxel.play(0, 0)
-            except Exception:
-              pass
-            return
+            # ① ジャンプキーなら連続ジャンプへ
+            if is_jump_btn:
+              self.jump_frame = 0
+              self.jump_timer = 0
+              if pyxel.btn(pyxel.KEY_LEFT) or pyxel.btn(pyxel.KEY_A) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_LEFT):
+                self.direction = "left"
+                self.jump_dir = -1
+              elif pyxel.btn(pyxel.KEY_RIGHT) or pyxel.btn(pyxel.KEY_D) or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT):
+                self.direction = "right"
+                self.jump_dir = 1
+              try:
+                pyxel.play(0, 0)
+              except Exception:
+                pass
+              return
+            # ② 方向キーが押されたら着地モーションを即キャンセルして通常移動・ハシゴ処理へ進む
+            elif any_dir_btn:
+              self.is_jumping = False
+              self.jump_frame = 0
+              self.skip_idle = True
 
         self.jump_timer += 1
         if self.jump_timer >= self.jump_speed:
@@ -761,9 +774,11 @@ class App:
           or pyxel.btn(pyxel.GAMEPAD1_BUTTON_DPAD_RIGHT)
       )
 
-      # 該当のキーを離したときだけ末端ロックを解除する（斜め入力で解除されないようにする）
+      # 該当のキーを離したとき（またはハシゴに触れたとき）に上端ロックを解除する
       if not is_up:
         self.lock_stair_up = False
+        self.lock_free_up = False
+      if self.on_stair:
         self.lock_free_up = False
       if not is_down:
         self.lock_stair_dn = False
@@ -777,17 +792,25 @@ class App:
       if (not self.on_stair and not self.on_free_tile) or self.lock_free_dn:
         is_down = False
 
+      # ハシゴを下りきった直後（lock_stair_dn中）に斜め下入力されているときは、左右移動だけをキャンセルして下へ歩き続ける（バタバタ防止）
+      if self.lock_stair_dn and is_down:
+        is_left = False
+        is_right = False
+
       # 階段に触れている状態（または下キーで足元下にハシゴがあるとき）に上下キーを押したら「昇降モード」に入る
       if (self.on_stair or is_down) and (is_up or is_down):
         cx1, cy1, cx2, cy2 = self.get_hitbox(self.x, self.y)
 
         if is_up:
           can_climb_up = False
-          for check_y in range(int(cy1), int(cy2) + 1, 4):
+          up_check_y = list(range(int(cy1), int(cy2) + 1, 4)) + [int(cy2), int(cy2) + 1, int(cy2) + 2]
+          for check_y in up_check_y:
             for check_x in range(int(cx1) + 4, int(cx2) - 3, 2):
               if self.get_tile_at(check_x, check_y) in self.STAIR_TILES:
                 can_climb_up = True
                 break
+            if can_climb_up:
+              break
           if can_climb_up:
             # まだ昇降モードに入っていなかった瞬間（掴まり始め）だけ中央にスナップさせる
             if not self.climbing:
@@ -827,6 +850,10 @@ class App:
       if self.climbing:
         is_left = False
         is_right = False
+      elif not self.on_free_tile:
+        # 昇降モードに入っていない平地では、上下キーで横歩きが止まらないようにする
+        is_up = False
+        is_down = False
 
       new_direction = self.direction
       is_input = False
@@ -984,6 +1011,7 @@ class App:
                     )
                     if not still_in_free:
                       self.moving = False
+                      self.lock_stair_dn = False  # 下端に到達したらハシゴ降りきりロックも解除し、左右へスライド移動できるようにする
                       # 真下にハシゴがある場合はロックせず、そのままハシゴ降りへ移行できるようにする
                       if not self.on_stair:
                         self.lock_free_dn = True
@@ -991,12 +1019,11 @@ class App:
 
                 self.y += step_y
               else:
-                if self.on_free_tile:
-                  self.moving = False
-                  if step_y < 0:
-                    self.lock_free_up = True
-                  elif step_y > 0:
-                    self.lock_free_dn = True
+                self.moving = False
+                if step_y < 0:
+                  self.lock_free_up = True
+                elif step_y > 0:
+                  self.lock_free_dn = True
                 break
 
           self.frame_x = (self.frame_x + 1) % 3
